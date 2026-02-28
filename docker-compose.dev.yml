@@ -1,0 +1,123 @@
+# 开发模式 Docker Compose 配置
+# 支持代码挂载和热更新，无需重新构建镜像
+# 使用方式: docker-compose -f docker-compose.dev.yml up
+
+services:
+  # MySQL 数据库服务（与生产环境相同）
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-graduation-dev
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: graduation_topic
+      MYSQL_USER: graduation_user
+      MYSQL_PASSWORD: graduation_pass
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      # 数据持久化
+      - mysql_data_dev:/var/lib/mysql
+      # 初始化脚本
+      - ./backend/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./backend/src/main/resources/db/init-data.sql:/docker-entrypoint-initdb.d/02-init-data.sql:ro
+    command: 
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    networks:
+      - graduation-network-dev
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端服务（开发模式 - 支持热更新）
+  backend:
+    image: maven:3.9.9-eclipse-temurin-17
+    container_name: graduation-backend-dev
+    restart: always
+    ports:
+      - "9090:9090"
+    environment:
+      # 数据库连接配置（使用服务名）
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: graduation_topic
+      DB_USER: root
+      DB_PASSWORD: root
+      # JWT 配置
+      JWT_SECRET: ${JWT_SECRET:-QxuhaiYhazhkrYbbJQwhvJd06GVWAq09YCC7NceNjsM2GDciiM30tClcrS2pD3+nDV2cIrQIVK0qnFJLqbCIRw==}
+      JWT_EXPIRATION: 120
+      # 管理员配置
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: 123456
+      ADMIN_REAL_NAME: 系统管理员
+      ADMIN_AUTO_CREATE: "false"
+      # Spring Boot 开发配置
+      SPRING_PROFILES_ACTIVE: prod
+    volumes:
+      # 挂载源代码目录（实现热更新）
+      - ./backend:/app
+      # Maven 本地仓库缓存（加速构建）
+      - maven_cache:/root/.m2
+      # 日志目录
+      - ./backend/logs:/app/logs
+    working_dir: /app
+    command: >
+      sh -c "
+        echo '等待 MySQL 就绪...' &&
+        sleep 10 &&
+        echo '首次编译项目...' &&
+        mvn clean package -DskipTests &&
+        echo '启动后端服务（支持热更新）...' &&
+        mvn spring-boot:run -Dspring-boot.run.profiles=prod
+      "
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - graduation-network-dev
+    # 注意：使用 mvn spring-boot:run 支持热更新，修改代码后会自动重新编译和重启
+
+  # 前端服务（开发模式 - 支持热更新）
+  frontend:
+    image: node:18-alpine
+    container_name: graduation-frontend-dev
+    restart: always
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      # 挂载源代码目录（实现热更新）
+      - ./frontend:/app
+      # Node 模块缓存（加速安装）
+      - node_modules_cache:/app/node_modules
+    working_dir: /app
+    command: >
+      sh -c "
+        echo '安装依赖（如果需要）...' &&
+        npm config set registry https://registry.npmmirror.com &&
+        npm install --legacy-peer-deps &&
+        echo '启动前端开发服务器...' &&
+        npm run dev -- --host 0.0.0.0
+      "
+    depends_on:
+      - backend
+    networks:
+      - graduation-network-dev
+
+volumes:
+  mysql_data_dev:
+    driver: local
+  maven_cache:
+    driver: local
+  node_modules_cache:
+    driver: local
+
+networks:
+  graduation-network-dev:
+    driver: bridge

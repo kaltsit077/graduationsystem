@@ -1,0 +1,51 @@
+server:
+  port: 9090
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/graduation_topic?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # HikariCP 连接池配置
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+
+  jackson:
+    time-zone: Asia/Shanghai
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+jwt:
+  # JWT 密钥（64 字节，512 位，满足 HS512 算法要求）
+  secret: "QxuhaiYhazhkrYbbJQwhvJd06GVWAq09YCC7NceNjsM2GDciiM30tClcrS2pD3+nDV2cIrQIVK0qnFJLqbCIRw=="
+  expiration-minutes: 120
+
+# 默认管理员账号配置（已禁用自动创建，管理员账号通过数据库脚本创建）
+admin:
+  username: admin
+  password: 123456
+  real-name: 系统管理员
+  auto-create: false  # 已禁用自动创建，管理员账号通过 init-data.sql 创建
+
+# AI 标签抽取（可选）：从研究方向/兴趣描述中自动抽取关键词作为用户标签
+# 未配置或 enabled=false 时仍使用原有的按逗号/空格分词逻辑
+ai:
+  tag:
+    enabled: false
+    # 兼容 OpenAI 的聊天接口，例如 https://api.openai.com/v1/chat/completions 或智谱/通义等
+    api-url: https://api.openai.com/v1/chat/completions
+    api-key: ""   # 生产环境请通过环境变量 AI_TAG_API_KEY 或配置中心设置
+    model: gpt-3.5-turbo
+    timeout-ms: 10000
+

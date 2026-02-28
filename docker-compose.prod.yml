@@ -1,0 +1,106 @@
+# 生产环境 Docker Compose 配置
+# 使用方式: docker-compose -f docker-compose.prod.yml up -d
+# 注意: 部署前必须创建 .env 文件并配置所有敏感信息
+
+services:
+  # MySQL 数据库服务
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-graduation
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-graduation_topic}
+      MYSQL_USER: ${DB_USER:-graduation_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    # 生产环境不要暴露数据库端口到公网
+    # ports:
+    #   - "3306:3306"
+    volumes:
+      # 数据持久化
+      - mysql_data:/var/lib/mysql
+      # 初始化脚本
+      - ./backend/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./backend/src/main/resources/db/init-data.sql:/docker-entrypoint-initdb.d/02-init-data.sql:ro
+    command: 
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --bind-address=0.0.0.0
+    networks:
+      - graduation-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: graduation-backend
+    restart: always
+    # 生产环境建议通过 Nginx 反向代理，不直接暴露端口
+    # ports:
+    #   - "9090:9090"
+    environment:
+      # 数据库连接配置
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-graduation_topic}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # JWT 配置
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-120}
+      # 管理员配置
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_REAL_NAME: ${ADMIN_REAL_NAME:-系统管理员}
+      ADMIN_AUTO_CREATE: ${ADMIN_AUTO_CREATE:-false}
+      # CORS 配置（生产环境必须配置）
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:5173,http://localhost:80}
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: prod
+    volumes:
+      # 日志目录
+      - ./backend/logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - graduation-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/api/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: graduation-frontend
+    restart: always
+    ports:
+      - "80:80"
+      # 如果配置了 HTTPS，使用 443:443
+      # - "443:443"
+    depends_on:
+      - backend
+    networks:
+      - graduation-network
+    # 前端不需要环境变量（已构建到静态文件中）
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  graduation-network:
+    driver: bridge
+

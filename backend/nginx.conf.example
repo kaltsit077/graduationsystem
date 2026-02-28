@@ -1,0 +1,103 @@
+# Nginx 反向代理配置示例
+# 用于公网部署时，将 Nginx 作为反向代理服务器
+# 
+# 使用步骤：
+# 1. 将此文件复制到 Nginx 配置目录（通常是 /etc/nginx/sites-available/ 或 nginx/conf/）
+# 2. 修改 server_name 为你的域名
+# 3. 修改后端地址和端口（如果后端不在同一服务器）
+# 4. 重启 Nginx: nginx -s reload
+#
+# Windows 部署：将此文件放在 Nginx 安装目录的 conf/ 下，在 nginx.conf 中用 include 引入
+
+upstream graduation_backend {
+    # 后端服务地址（如果同一服务器，使用 localhost:8080）
+    server 127.0.0.1:8080;
+    # 如果有多个后端实例，可以配置负载均衡
+    # server 127.0.0.1:8081;
+    # server 127.0.0.1:8082;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    # 生产环境建议使用 HTTPS，将 443 端口配置 SSL 证书
+    # listen 443 ssl http2;
+    # ssl_certificate /path/to/ssl/cert.pem;
+    # ssl_certificate_key /path/to/ssl/key.pem;
+
+    # 修改为你的域名
+    server_name your-domain.com www.your-domain.com;
+
+    # 客户端请求体大小限制（用于文件上传）
+    client_max_body_size 200M;
+
+    # 访问日志
+    access_log logs/graduation_access.log;
+    error_log logs/graduation_error.log;
+
+    # 前端静态文件（如果有前端打包文件放在这里）
+    location / {
+        root /path/to/frontend/dist;
+        try_files $uri $uri/ /index.html;
+        index index.html;
+    }
+
+    # 后端 API 代理
+    location /api/ {
+        proxy_pass http://graduation_backend;
+        proxy_http_version 1.1;
+        
+        # 保持连接
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # 超时设置
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        
+        # 文件上传相关
+        proxy_request_buffering off;
+        proxy_buffering off;
+        
+        # CORS 处理（如果后端已处理 CORS，可以注释掉）
+        # add_header Access-Control-Allow-Origin $http_origin always;
+        # add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        # add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+        # add_header Access-Control-Allow-Credentials true always;
+        
+        # OPTIONS 预检请求
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+    }
+
+    # 文件下载接口（论文文件等）
+    location /api/files/ {
+        proxy_pass http://graduation_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # 文件下载相关配置
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # 健康检查接口（可选，用于负载均衡器）
+    location /health {
+        access_log off;
+        proxy_pass http://graduation_backend/api/ping;
+    }
+}
+
+# HTTP 重定向到 HTTPS（生产环境推荐）
+# server {
+#     listen 80;
+#     server_name your-domain.com www.your-domain.com;
+#     return 301 https://$server_name$request_uri;
+# }
+
