@@ -31,7 +31,7 @@
       </div>
     </el-header>
     <el-container>
-      <el-aside width="200px" class="layout-aside">
+      <el-aside width="220px" class="layout-aside">
         <el-menu
           :default-active="activeMenu"
           router
@@ -45,9 +45,17 @@
             <el-icon><Document /></el-icon>
             <span>选题中心</span>
           </el-menu-item>
+          <el-menu-item index="/student/teachers">
+            <el-icon><User /></el-icon>
+            <span>导师列表</span>
+          </el-menu-item>
           <el-menu-item index="/student/applications">
             <el-icon><List /></el-icon>
             <span>我的申请</span>
+          </el-menu-item>
+          <el-menu-item index="/student/collab">
+            <el-icon><Document /></el-icon>
+            <span>协作中心</span>
           </el-menu-item>
           <el-menu-item index="/student/profile">
             <el-icon><User /></el-icon>
@@ -56,7 +64,9 @@
         </el-menu>
       </el-aside>
       <el-main class="layout-main">
-        <router-view />
+        <div class="page-wrapper">
+          <router-view />
+        </div>
       </el-main>
     </el-container>
   </el-container>
@@ -99,6 +109,7 @@ const handleCommand = async (command: string) => {
 <style scoped>
 .layout-container {
   height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #eef3fb 50%, #f5f7fa 100%);
 }
 
 .layout-header {
@@ -107,12 +118,14 @@ const handleCommand = async (command: string) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 28px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .header-left h2 {
   margin: 0;
   font-size: 20px;
+  letter-spacing: 0.5px;
 }
 
 .header-right {
@@ -155,16 +168,69 @@ const handleCommand = async (command: string) => {
 .layout-aside {
   background: #fff;
   border-right: 1px solid #e4e7ed;
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.03);
 }
 
 .sidebar-menu {
   border-right: none;
   height: 100%;
+  padding: 16px 8px;
 }
 
 .layout-main {
-  background: #f5f7fa;
-  padding: 20px;
+  background: transparent;
+  padding: 24px 32px;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.page-wrapper {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 28px;
+  background-color: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 18px 45px rgba(15, 35, 95, 0.08);
+  box-sizing: border-box;
+  overflow: hidden;
+  animation: fade-slide-in 0.4s ease-out;
+}
+
+:deep(.sidebar-menu .el-menu-item) {
+  border-radius: 10px;
+  margin-bottom: 6px;
+  height: 44px;
+  line-height: 44px;
+  transition: all 0.25s ease-out;
+}
+
+:deep(.sidebar-menu .el-menu-item.is-active) {
+  background: linear-gradient(90deg, #409eff 0%, #66b1ff 100%);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(64, 158, 255, 0.35);
+}
+
+:deep(.sidebar-menu .el-menu-item:hover) {
+  background-color: rgba(64, 158, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+:deep(.sidebar-menu .el-menu-item .el-icon) {
+  margin-right: 8px;
+}
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>
 

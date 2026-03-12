@@ -21,8 +21,15 @@ public class AiTagService {
     private static final Logger log = LoggerFactory.getLogger(AiTagService.class);
 
     private static final String PROMPT_TEMPLATE =
-            "从以下文本中抽取2-6个关键词作为标签，用于毕业选题方向匹配。"
-                    + "要求：仅返回逗号分隔的标签，每个标签2-6个汉字或英文词，不要编号、不要解释。\n\n文本：%s";
+            "你是高校毕业论文选题匹配系统的标签生成助手。"
+                    + "现在给你一段描述（可能是学生的专业和兴趣，也可能是导师的研究方向），"
+                    + "请根据语义抽象出 2-6 个【高质量、可用于选题匹配的主题标签】。"
+                    + "要求："
+                    + "1）标签要与文本内容高度相关，不要只是简单拆分原句；"
+                    + "2）每个标签 2-6 个汉字或一个简短英文短语；"
+                    + "3）只输出标签本身，用中文逗号分隔；"
+                    + "4）不要序号、不要换行、不要解释。"
+                    + "\\n\\n文本：%s";
 
     private static final Pattern SPLIT_PATTERN = Pattern.compile("[,，、;；\\s]+");
 

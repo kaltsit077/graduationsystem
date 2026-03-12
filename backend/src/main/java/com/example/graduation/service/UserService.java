@@ -95,5 +95,28 @@ public class UserService {
         }
         return count;
     }
+
+    /**
+     * 管理员批量删除账号（数据库外键会级联删除关联数据）
+     */
+    @Transactional
+    public int deleteUsers(List<Long> userIds, Long currentAdminId) {
+        if (userIds == null || userIds.isEmpty()) {
+            return 0;
+        }
+        if (currentAdminId != null && userIds.contains(currentAdminId)) {
+            throw new RuntimeException("不能删除当前登录账号");
+        }
+
+        // 禁止删除管理员账号（包括其他管理员）
+        List<User> users = userMapper.selectBatchIds(userIds);
+        for (User u : users) {
+            if (u != null && u.getRole() == User.Role.ADMIN) {
+                throw new RuntimeException("禁止删除管理员账号");
+            }
+        }
+
+        return userMapper.deleteBatchIds(userIds);
+    }
 }
 

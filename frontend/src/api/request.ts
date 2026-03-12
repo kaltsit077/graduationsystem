@@ -35,25 +35,23 @@ request.interceptors.response.use(
   },
   (error) => {
     if (error.response) {
-      if (error.response.status === 401 || error.response.status === 403) {
+      const msg = error.response.data?.message || error.response.data?.msg || ''
+      if (error.response.status === 401) {
         const authStore = useAuthStore()
         const currentPath = router.currentRoute.value.path
-        
-        // 如果已经在登录页，不显示错误消息，避免重复提示
         if (currentPath !== '/login') {
           authStore.clearAuth()
-          if (error.response.status === 401) {
-            ElMessage.error('登录已过期，请重新登录')
-          } else {
-            ElMessage.error('无权限访问，请重新登录')
-          }
+          ElMessage.error('登录已过期，请重新登录')
           router.push('/login')
         } else {
-          // 在登录页时，只清除认证信息，不显示错误消息
           authStore.clearAuth()
         }
+      } else if (error.response.status === 403) {
+        // 403 一律视为“当前账号无权限”，但不自动登出，避免误伤正常登录用户
+        // 具体业务（如禁止删除管理员）在各自页面上自行处理文案
+        ElMessage.error(msg || '当前账号无权限执行该操作')
       } else {
-        ElMessage.error(error.response.data?.message || '请求失败')
+        ElMessage.error(msg || '请求失败')
       }
     } else {
       ElMessage.error('网络错误，请稍后重试')

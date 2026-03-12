@@ -2,7 +2,7 @@
 # 使用方式：java -jar -Dspring.profiles.active=prod app.jar
 
 server:
-  port: 9090
+  port: 9091
   # 允许内网访问（如果需要外网，通过 Nginx 反代，不建议直接暴露 8080）
   address: 0.0.0.0
   # 请求体大小限制（用于文件上传）
@@ -22,6 +22,12 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
+
+  # SQL 初始化（生产环境建议使用迁移工具；此处用于避免“缺表导致接口异常”）
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
 
   jackson:
     time-zone: Asia/Shanghai

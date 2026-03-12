@@ -33,6 +33,9 @@ public class TopicService {
     
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private SystemSettingService systemSettingService;
     
     /**
      * 创建选题
@@ -230,6 +233,10 @@ public class TopicService {
      * 获取已开放的选题列表（学生端）
      */
     public List<Topic> getOpenTopics() {
+        // 如果全局选题开关关闭或当前不在开放时间内，直接返回空列表
+        if (!systemSettingService.isSelectionOpenNow()) {
+            return List.of();
+        }
         return getTopics(Topic.TopicStatus.OPEN, null);
     }
     

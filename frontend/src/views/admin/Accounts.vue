@@ -4,13 +4,22 @@
       <template #header>
         <div class="card-header">
           <span>账号管理</span>
-          <el-button
-            type="primary"
-            :disabled="currentSelection.length === 0"
-            @click="batchResetPassword"
-          >
-            批量重置为 123456（已选 {{ currentSelection.length }} 人）
-          </el-button>
+          <div class="header-actions">
+            <el-button
+              type="primary"
+              :disabled="currentSelection.length === 0"
+              @click="batchResetPassword"
+            >
+              批量重置为 123456（已选 {{ currentSelection.length }} 人）
+            </el-button>
+            <el-button
+              type="danger"
+              :disabled="currentSelection.length === 0"
+              @click="batchDeleteUsers"
+            >
+              批量删除（已选 {{ currentSelection.length }} 人）
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -36,9 +45,10 @@
               </template>
             </el-table-column>
             <el-table-column prop="createdAt" label="注册时间" width="180" />
-            <el-table-column label="操作" width="120" fixed="right">
+            <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="openChangePassword(row)">修改密码</el-button>
+                <el-button type="danger" link size="small" @click="deleteSingleUser(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -65,9 +75,10 @@
               </template>
             </el-table-column>
             <el-table-column prop="createdAt" label="注册时间" width="180" />
-            <el-table-column label="操作" width="120" fixed="right">
+            <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="openChangePassword(row)">修改密码</el-button>
+                <el-button type="danger" link size="small" @click="deleteSingleUser(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -109,6 +120,7 @@ import {
   getAdminStudents,
   updateUserPassword,
   resetPasswordsToDefault,
+  deleteUsers,
   type AdminUser
 } from '@/api/admin'
 
@@ -226,6 +238,54 @@ const batchResetPassword = async () => {
     ElMessage.error('批量重置失败')
   }
 }
+
+const batchDeleteUsers = async () => {
+  const list = currentSelection.value
+  if (list.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${list.length} 个账号吗？删除后将无法恢复。`,
+      '批量删除账号',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  const ids = list.map((u) => u.id)
+  try {
+    const res = await deleteUsers(ids)
+    ElMessage.success(`已删除 ${res.data ?? 0} 个账号`)
+    if (activeTab.value === 'teachers') {
+      loadTeachers()
+      teacherTableRef.value?.clearSelection()
+    } else {
+      loadStudents()
+      studentTableRef.value?.clearSelection()
+    }
+  } catch {
+    ElMessage.error('批量删除失败')
+  }
+}
+
+const deleteSingleUser = async (row: AdminUser) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除账号「${row.username}」吗？删除后将无法恢复。`,
+      '删除账号',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  try {
+    const res = await deleteUsers([row.id])
+    ElMessage.success(`已删除 ${res.data ?? 0} 个账号`)
+    if (activeTab.value === 'teachers') loadTeachers()
+    else loadStudents()
+  } catch {
+    ElMessage.error('删除失败')
+  }
+}
 </script>
 
 <style scoped>
@@ -237,5 +297,10 @@ const batchResetPassword = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
 }
 </style>

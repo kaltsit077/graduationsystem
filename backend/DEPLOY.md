@@ -125,7 +125,7 @@ java -jar -Dspring.profiles.active=prod \
 
 **Windows 方式**：
 
-使用提供的 `start.bat` 脚本，或手动执行：
+可使用项目提供的 `scripts\backend-local.bat`（会检查端口/自动构建），或手动执行：
 
 ```cmd
 java -jar -Dspring.profiles.active=prod graduation-topic-backend-0.0.1-SNAPSHOT.jar

@@ -11,7 +11,7 @@ export interface Notification {
 }
 
 // 获取通知列表
-export const getNotifications = (params?: { isRead?: boolean; limit?: number }) => {
+export const getNotifications = (params?: { isRead?: boolean; limit?: number; type?: string; relatedId?: number }) => {
   return request.get<Notification[]>('/notifications', { params })
 }
 
@@ -28,5 +28,12 @@ export const markNotificationAsRead = (id: number) => {
 // 标记所有通知为已读
 export const markAllNotificationsAsRead = () => {
   return request.post('/notifications/read-all')
+}
+
+// 发送聊天消息
+export const sendChatMessage = (targetUserId: number, content: string, relatedId?: number) => {
+  return request.post('/notifications/chat', null, {
+    params: { targetUserId, content, relatedId }
+  })
 }
 

@@ -32,7 +32,7 @@
               v-if="row.status === 'PENDING'"
               type="success"
               size="small"
-              @click="processApplication(row, 'APPROVED')"
+              @click="processApplicationClick(row, 'APPROVED')"
             >
               通过
             </el-button>
@@ -40,7 +40,7 @@
               v-if="row.status === 'PENDING'"
               type="danger"
               size="small"
-              @click="processApplication(row, 'REJECTED')"
+              @click="processApplicationClick(row, 'REJECTED')"
             >
               拒绝
             </el-button>

@@ -2,8 +2,10 @@ package com.example.graduation.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.graduation.entity.TeacherProfile;
+import com.example.graduation.entity.User;
 import com.example.graduation.entity.UserTag;
 import com.example.graduation.mapper.TeacherProfileMapper;
+import com.example.graduation.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,9 @@ public class TeacherService {
     
     @Autowired
     private TeacherProfileMapper teacherProfileMapper;
+
+    @Autowired
+    private UserMapper userMapper;
     
     @Autowired
     private TagService tagService;
@@ -23,7 +28,15 @@ public class TeacherService {
      * 完善导师信息
      */
     @Transactional
-    public TeacherProfile updateProfile(Long userId, String title, String researchDirection, Integer maxStudentCount) {
+    public TeacherProfile updateProfile(Long userId, String realName, String title, String researchDirection, Integer maxStudentCount) {
+        if (realName != null && !realName.trim().isEmpty()) {
+            User user = userMapper.selectById(userId);
+            if (user != null) {
+                user.setRealName(realName.trim());
+                userMapper.updateById(user);
+            }
+        }
+
         TeacherProfile profile = teacherProfileMapper.selectOne(
                 new LambdaQueryWrapper<TeacherProfile>()
                         .eq(TeacherProfile::getUserId, userId)

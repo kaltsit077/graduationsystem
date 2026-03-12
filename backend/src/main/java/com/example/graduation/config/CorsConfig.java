@@ -55,8 +55,8 @@ public class CorsConfig {
         // 允许的请求方法
         config.addAllowedMethod("*");
         
-        // 允许携带凭证（Cookie等）
-        config.setAllowCredentials(true);
+        // 使用 JWT 时无需 allowCredentials，避免与 * 冲突导致 403
+        config.setAllowCredentials(false);
         
         // 预检请求的缓存时间（秒）
         config.setMaxAge(3600L);

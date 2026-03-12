@@ -11,16 +11,14 @@
 **Windows 用户**：
 ```bash
 # 双击运行
-start.bat
+run.bat
 ```
 
 脚本会自动：
-- ✅ 检查并启动 Docker MySQL 容器
-- ✅ 启动后端服务（端口 9090）
-- ✅ 启动前端服务（端口 5173）
+- ✅ 通过 Docker Compose 启动 mysql/backend/frontend（后台运行）
 
 **访问地址**：
-- 前端：http://localhost:5173
+- 前端：http://localhost
 - 后端API：http://localhost:9090/api
 - 健康检查：http://localhost:9090/api/ping
 
@@ -28,7 +26,7 @@ start.bat
 
 ```bash
 # 双击运行
-scripts\start-docker-dev.bat
+scripts\docker-dev-up.bat
 ```
 
 所有服务都在 Docker 容器中运行，支持代码热更新。
@@ -101,7 +99,7 @@ menu/
 │   ├── deployment/      # 部署相关文档
 │   └── docker/          # Docker 相关文档
 ├── scripts/              # 🔧 脚本文件目录
-├── start.bat            # 🚀 快速启动（重定向到 scripts）
+├── run.bat              # 🚀 一键启动（Docker Compose 后台运行）
 └── README.md            # 📖 项目主文档
 ```
 

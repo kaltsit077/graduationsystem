@@ -24,6 +24,11 @@ public class StudentProfile {
     private String grade;
     
     private String interestDesc;
+
+    /**
+     * 标签生成模式：MAJOR / INTEREST / BOTH
+     */
+    private String tagMode;
     
     private LocalDateTime createdAt;
     

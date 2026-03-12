@@ -16,9 +16,8 @@ services:
     volumes:
       # 数据持久化
       - mysql_data:/var/lib/mysql
-      # 初始化脚本（可选）
+      # 初始化脚本（仅保留建表脚本；初始数据脚本已移除）
       - ./backend/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./backend/src/main/resources/db/init-data.sql:/docker-entrypoint-initdb.d/02-init-data.sql:ro
     command: 
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -39,7 +38,8 @@ services:
     container_name: graduation-backend
     restart: always
     ports:
-      - "9090:9090"
+      # 宿主机 9090 -> 容器内 9091（Spring Boot 实际监听 9091）
+      - "9090:9091"
     environment:
       # 数据库连接配置（使用服务名）
       DB_HOST: mysql
@@ -64,7 +64,8 @@ services:
     networks:
       - graduation-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/api/ping"]
+      # 健康检查必须访问容器内实际端口 9091
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9091/api/ping"]
       interval: 30s
       timeout: 10s
       retries: 3

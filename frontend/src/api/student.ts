@@ -1,9 +1,12 @@
 import request from './request'
 
 export interface StudentProfileRequest {
+  realName?: string
   major?: string
   grade?: string
   interestDesc?: string
+  // 标签生成模式：MAJOR / INTEREST / BOTH
+  tagMode?: 'MAJOR' | 'INTEREST' | 'BOTH'
 }
 
 export interface UserTag {
@@ -13,9 +16,12 @@ export interface UserTag {
 
 export interface StudentProfileResponse {
   userId: number
+  username?: string
+  realName?: string
   major?: string
   grade?: string
   interestDesc?: string
+  tagMode?: 'MAJOR' | 'INTEREST' | 'BOTH'
   tags: UserTag[]
 }
 

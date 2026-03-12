@@ -1,6 +1,7 @@
 import request from './request'
 
 export interface TeacherProfileRequest {
+  realName?: string
   title?: string
   researchDirection?: string
   maxStudentCount?: number
@@ -13,6 +14,8 @@ export interface UserTag {
 
 export interface TeacherProfileResponse {
   userId: number
+  username?: string
+  realName?: string
   title?: string
   researchDirection?: string
   maxStudentCount?: number

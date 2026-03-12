@@ -7,6 +7,8 @@ import java.util.List;
 @Data
 public class TeacherProfileResponse {
     private Long userId;
+    private String username;
+    private String realName;
     private String title;
     private String researchDirection;
     private Integer maxStudentCount;

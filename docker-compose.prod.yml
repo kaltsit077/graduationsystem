@@ -20,9 +20,8 @@ services:
     volumes:
       # 数据持久化
       - mysql_data:/var/lib/mysql
-      # 初始化脚本
+      # 初始化脚本（生产环境仅保留建表脚本，数据初始化由运维或 SQL 工具单独控制）
       - ./backend/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./backend/src/main/resources/db/init-data.sql:/docker-entrypoint-initdb.d/02-init-data.sql:ro
     command: 
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci

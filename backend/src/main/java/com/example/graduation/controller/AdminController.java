@@ -1,32 +1,51 @@
 package com.example.graduation.controller;
 
 import com.example.graduation.common.ApiResponse;
+import com.example.graduation.dto.AdminDeleteUsersRequest;
 import com.example.graduation.dto.AdminPasswordRequest;
 import com.example.graduation.dto.AdminResetPasswordRequest;
 import com.example.graduation.dto.AdminUserListItem;
+import com.example.graduation.dto.MonitorStatusResponse;
+import com.example.graduation.dto.SelectionSettingRequest;
+import com.example.graduation.dto.SelectionSettingResponse;
 import com.example.graduation.dto.TopicReviewRequest;
 import com.example.graduation.dto.TopicResponse;
 import com.example.graduation.dto.UserCreateRequest;
+import com.example.graduation.entity.SystemSetting;
 import com.example.graduation.entity.Topic;
 import com.example.graduation.entity.TopicReview;
 import com.example.graduation.entity.User;
 import com.example.graduation.mapper.TopicTagMapper;
 import com.example.graduation.mapper.UserMapper;
+import com.example.graduation.service.SystemSettingService;
 import com.example.graduation.service.TopicService;
 import com.example.graduation.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.graduation.entity.TopicTag;
 import com.example.graduation.entity.User.Role;
 
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.OperatingSystemMXBean;
+import java.lang.management.RuntimeMXBean;
+import java.lang.management.ThreadMXBean;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import com.zaxxer.hikari.HikariDataSource;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -43,6 +62,15 @@ public class AdminController {
     
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private DataSource dataSource;
+
+    @Autowired
+    private SystemSettingService systemSettingService;
+
+    @Value("${logging.file.name:logs/graduation-backend.log}")
+    private String logFilePath;
     
     /**
      * 获取当前用户ID
@@ -77,6 +105,122 @@ public class AdminController {
         item.setStatus(u.getStatus());
         item.setCreatedAt(u.getCreatedAt() != null ? u.getCreatedAt().format(ISO_DATETIME) : "");
         return item;
+    }
+
+    /**
+     * 系统运行状态（内存、线程、DB连接等）
+     */
+    @GetMapping("/monitor/status")
+    public ApiResponse<MonitorStatusResponse> getMonitorStatus() {
+        MonitorStatusResponse status = new MonitorStatusResponse();
+
+        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+        long uptimeMillis = runtimeMXBean.getUptime();
+        status.setUptimeMillis(uptimeMillis);
+        status.setUptime(formatUptime(uptimeMillis));
+
+        Runtime runtime = Runtime.getRuntime();
+        double usedMb = (runtime.totalMemory() - runtime.freeMemory()) / 1024.0 / 1024.0;
+        double maxMb = runtime.maxMemory() / 1024.0 / 1024.0;
+        status.setHeapUsedMb(Math.round(usedMb * 10) / 10.0);
+        status.setHeapMaxMb(Math.round(maxMb * 10) / 10.0);
+
+        ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+        status.setThreadCount(threadMXBean.getThreadCount());
+
+        OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+        status.setSystemLoadAverage(osBean.getSystemLoadAverage());
+
+        if (dataSource instanceof HikariDataSource) {
+            HikariDataSource hikari = (HikariDataSource) dataSource;
+            try {
+                status.setActiveDbConnections(hikari.getHikariPoolMXBean().getActiveConnections());
+                status.setIdleDbConnections(hikari.getHikariPoolMXBean().getIdleConnections());
+            } catch (Exception ignored) {
+                status.setActiveDbConnections(0);
+                status.setIdleDbConnections(0);
+            }
+        }
+
+        return ApiResponse.success(status);
+    }
+
+    /**
+     * 最近的错误日志（默认 ERROR 级别，倒数 N 行）
+     */
+    @GetMapping("/monitor/logs")
+    public ApiResponse<List<String>> getLogs(
+            @RequestParam(name = "level", defaultValue = "ERROR") String level,
+            @RequestParam(name = "lines", defaultValue = "200") int lines) {
+        Path path = Paths.get(logFilePath);
+        if (!Files.exists(path)) {
+            String msg = "日志文件不存在: " + path.toAbsolutePath();
+            return ApiResponse.success(Collections.singletonList(msg));
+        }
+        try {
+            List<String> allLines = Files.readAllLines(path);
+            int fromIndex = Math.max(0, allLines.size() - lines);
+            List<String> tail = new ArrayList<>(allLines.subList(fromIndex, allLines.size()));
+
+            if (level != null && !level.isBlank() && !"ALL".equalsIgnoreCase(level)) {
+                String keyword = level.toUpperCase();
+                tail = tail.stream()
+                        .filter(s -> s.contains(" " + keyword + " ") || s.contains("[" + keyword + "]"))
+                        .collect(Collectors.toList());
+            }
+
+            return ApiResponse.success(tail);
+        } catch (IOException e) {
+            return ApiResponse.error("读取日志失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取选题系统开放设置（全局开关 + 时间窗口）
+     */
+    @GetMapping("/selection-setting")
+    public ApiResponse<SelectionSettingResponse> getSelectionSetting() {
+        SystemSetting setting = systemSettingService.getOrCreate();
+        SelectionSettingResponse resp = new SelectionSettingResponse();
+        resp.setEnabled(setting.getSelectionEnabled() != null ? setting.getSelectionEnabled() : Boolean.TRUE);
+        resp.setStartTime(setting.getSelectionStartTime());
+        resp.setEndTime(setting.getSelectionEndTime());
+        resp.setOpenNow(systemSettingService.isSelectionOpenNow());
+        return ApiResponse.success(resp);
+    }
+
+    /**
+     * 更新选题系统开放设置（全局开关 + 时间窗口）
+     */
+    @PostMapping("/selection-setting")
+    public ApiResponse<SelectionSettingResponse> updateSelectionSetting(@RequestBody SelectionSettingRequest requestDto) {
+        SystemSetting setting = systemSettingService.updateSelectionSetting(
+                requestDto.getEnabled() != null ? requestDto.getEnabled() : Boolean.FALSE,
+                requestDto.getStartTime(),
+                requestDto.getEndTime()
+        );
+        SelectionSettingResponse resp = new SelectionSettingResponse();
+        resp.setEnabled(setting.getSelectionEnabled());
+        resp.setStartTime(setting.getSelectionStartTime());
+        resp.setEndTime(setting.getSelectionEndTime());
+        resp.setOpenNow(systemSettingService.isSelectionOpenNow());
+        return ApiResponse.success(resp);
+    }
+
+    private String formatUptime(long millis) {
+        long seconds = millis / 1000;
+        long minutes = seconds / 60;
+        long hours = minutes / 60;
+        long days = hours / 24;
+        seconds %= 60;
+        minutes %= 60;
+        hours %= 24;
+        StringBuilder sb = new StringBuilder();
+        if (days > 0) sb.append(days).append("天");
+        if (hours > 0) sb.append(hours).append("小时");
+        if (minutes > 0) sb.append(minutes).append("分钟");
+        sb.append(seconds).append("秒");
+        return sb.toString();
     }
 
     /**
@@ -124,6 +268,16 @@ public class AdminController {
     @PostMapping("/users/reset-password")
     public ApiResponse<Integer> resetPasswordsToDefault(@Valid @RequestBody AdminResetPasswordRequest request) {
         int count = userService.resetPasswordsToDefault(request.getUserIds());
+        return ApiResponse.success(count);
+    }
+
+    /**
+     * 管理员批量删除账号（支持单个/多选）
+     */
+    @PostMapping("/users/delete")
+    public ApiResponse<Integer> deleteUsers(@Valid @RequestBody AdminDeleteUsersRequest request, HttpServletRequest httpRequest) {
+        Long adminId = getCurrentUserId(httpRequest);
+        int count = userService.deleteUsers(request.getUserIds(), adminId);
         return ApiResponse.success(count);
     }
     

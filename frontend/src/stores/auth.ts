@@ -32,6 +32,11 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('userId')
   }
 
+  const setRealName = (newRealName: string) => {
+    realName.value = newRealName
+    localStorage.setItem('realName', newRealName)
+  }
+
   const isAuthenticated = () => {
     return token.value !== null
   }
@@ -54,6 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
     realName,
     userId,
     setAuth,
+    setRealName,
     clearAuth,
     isAuthenticated,
     isStudent,

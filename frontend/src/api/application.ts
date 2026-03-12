@@ -4,6 +4,7 @@ export interface Application {
   id: number
   topicId: number
   topicTitle?: string
+  teacherId?: number
   studentId: number
   studentName?: string
   status: string

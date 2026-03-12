@@ -5,7 +5,9 @@ import com.example.graduation.dto.TeacherProfileRequest;
 import com.example.graduation.dto.TeacherProfileResponse;
 import com.example.graduation.dto.UserTagResponse;
 import com.example.graduation.entity.TeacherProfile;
+import com.example.graduation.entity.User;
 import com.example.graduation.entity.UserTag;
+import com.example.graduation.mapper.UserMapper;
 import com.example.graduation.service.TeacherService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,9 @@ public class TeacherController {
     
     @Autowired
     private TeacherService teacherService;
+
+    @Autowired
+    private UserMapper userMapper;
     
     /**
      * 获取当前用户ID
@@ -38,8 +43,14 @@ public class TeacherController {
         List<UserTag> tags = teacherService.getTags(userId);
         
         TeacherProfileResponse response = new TeacherProfileResponse();
+        response.setUserId(userId);
+
+        User user = userMapper.selectById(userId);
+        if (user != null) {
+            response.setUsername(user.getUsername());
+            response.setRealName(user.getRealName());
+        }
         if (profile != null) {
-            response.setUserId(profile.getUserId());
             response.setTitle(profile.getTitle());
             response.setResearchDirection(profile.getResearchDirection());
             response.setMaxStudentCount(profile.getMaxStudentCount());
@@ -67,6 +78,7 @@ public class TeacherController {
         
         TeacherProfile profile = teacherService.updateProfile(
                 userId,
+                requestDto.getRealName(),
                 requestDto.getTitle(),
                 requestDto.getResearchDirection(),
                 requestDto.getMaxStudentCount()
@@ -75,7 +87,12 @@ public class TeacherController {
         List<UserTag> tags = teacherService.getTags(userId);
         
         TeacherProfileResponse response = new TeacherProfileResponse();
-        response.setUserId(profile.getUserId());
+        response.setUserId(userId);
+        User user = userMapper.selectById(userId);
+        if (user != null) {
+            response.setUsername(user.getUsername());
+            response.setRealName(user.getRealName());
+        }
         response.setTitle(profile.getTitle());
         response.setResearchDirection(profile.getResearchDirection());
         response.setMaxStudentCount(profile.getMaxStudentCount());

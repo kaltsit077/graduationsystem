@@ -33,14 +33,22 @@ public class NotificationService {
     }
     
     /**
-     * 获取用户通知列表
+     * 获取用户通知列表（可按已读状态、类型、关联ID及条数过滤）
      */
-    public List<Notification> getUserNotifications(Long userId, Boolean isRead, Integer limit) {
+    public List<Notification> getUserNotifications(Long userId, Boolean isRead, String type, Long relatedId, Integer limit) {
         LambdaQueryWrapper<Notification> wrapper = new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getUserId, userId);
         
         if (isRead != null) {
             wrapper.eq(Notification::getIsRead, isRead ? 1 : 0);
+        }
+        
+        if (type != null && !type.isBlank()) {
+            wrapper.eq(Notification::getType, type);
+        }
+        
+        if (relatedId != null) {
+            wrapper.eq(Notification::getRelatedId, relatedId);
         }
         
         wrapper.orderByDesc(Notification::getCreatedAt);
@@ -67,7 +75,7 @@ public class NotificationService {
      * 标记所有通知为已读
      */
     public void markAllAsRead(Long userId) {
-        List<Notification> notifications = getUserNotifications(userId, false, null);
+        List<Notification> notifications = getUserNotifications(userId, false, null, null, null);
         notifications.forEach(notification -> {
             notification.setIsRead(1);
             notificationMapper.updateById(notification);

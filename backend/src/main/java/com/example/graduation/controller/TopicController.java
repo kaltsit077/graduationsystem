@@ -75,7 +75,7 @@ public class TopicController {
         if (queryTeacherId == null) {
             // 如果没有指定teacherId，且当前用户是导师，则查询当前导师的选题
             String role = (String) request.getAttribute("role");
-            if ("TEACHER".equals(role)) {
+            if ("TEACHER".equalsIgnoreCase(role)) {
                 queryTeacherId = getCurrentUserId(request);
             }
         }

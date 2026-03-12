@@ -29,7 +29,7 @@ menu/
 │   │   │       └── application-prod.yml
 │   │   └── test/                        # 测试代码
 │   ├── pom.xml                          # Maven依赖配置
-│   ├── start.bat                        # Windows启动脚本
+│   ├── (启动建议见根目录 run.bat)        # 入口启动脚本在项目根目录
 │   ├── nginx.conf.example               # Nginx反向代理配置示例
 │   ├── DEPLOY.md                        # 部署文档
 │   ├── DEVELOPMENT_LOG.md               # 开发日志
@@ -245,7 +245,11 @@ menu/
 | 文件名 | 职责说明 |
 |--------|---------|
 | `pom.xml` | **Maven 依赖配置**<br>- Spring Boot 3.2.0<br>- Spring Security, Web, Validation<br>- MyBatis-Plus 3.5.6<br>- MySQL Connector<br>- JWT (jjwt 0.11.5)<br>- Lombok<br>- 使用 dependencyManagement 管理版本 |
-| `start.bat` | **Windows 启动脚本**<br>- 检测 Java 和 Maven 环境<br>- 自动打包或直接运行 JAR<br>- 使用生产环境配置启动<br>- 友好的启动提示 |
+| `run.bat` | **Windows 一键启动（推荐）**<br>- 调用 `scripts/docker-up.bat`<br>- 通过 Docker Compose 后台启动 mysql/backend/frontend |
+| `scripts/docker-up.bat` | **Docker Compose 后台启动**<br>- `docker compose up -d`（可通过 `COMPOSE_FILE` 切换 compose 文件） |
+| `scripts/docker-dev-up.bat` | **Docker 开发模式前台启动**<br>- `docker compose -f docker-compose.dev.yml up`（便于查看日志、热更新） |
+| `scripts/backend-local.bat` | **本机启动后端（JAR）**<br>- 检测 Java/Maven<br>- 端口保护：默认只会结束本机 Java 进程，避免误杀 Docker |
+| `scripts/frontend-dev.bat` | **本机启动前端（Vite）**<br>- 检测 Node/npm<br>- 自动安装依赖并启动 dev server |
 | `nginx.conf.example` | **Nginx 反向代理配置示例**<br>- 后端 API 代理（/api/）<br>- 前端静态文件服务<br>- 文件上传支持（200MB）<br>- HTTPS/SSL 配置示例<br>- CORS 处理说明 |
 | `DEPLOY.md` | **部署文档**<br>- 前置要求<br>- 数据库准备<br>- 后端部署步骤<br>- Nginx 配置<br>- SSL 证书配置<br>- 常见问题 |
 | `DEVELOPMENT_LOG.md` | **开发日志**<br>- 记录开发过程中的重要变更<br>- 功能模块完成状态<br>- 技术要点说明 |
@@ -535,7 +539,7 @@ Request (Axios 封装)
 
 1. **启动数据库**：MySQL 服务
 2. **执行 SQL 脚本**：`backend/src/main/resources/db/schema.sql`
-3. **启动后端**：`cd backend && ./start.bat` 或 `mvn spring-boot:run`
+3. **启动后端（本机）**：运行 `scripts\backend-local.bat` 或 `cd backend && mvn spring-boot:run`
 4. **启动前端**：`cd frontend && npm install && npm run dev`
 5. **访问系统**：http://localhost:3000
 

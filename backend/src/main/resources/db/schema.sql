@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS `student_profile` (
     `major` VARCHAR(100) DEFAULT NULL COMMENT '专业',
     `grade` VARCHAR(20) DEFAULT NULL COMMENT '年级',
     `interest_desc` TEXT COMMENT '兴趣描述',
+    `tag_mode` ENUM('MAJOR', 'INTEREST', 'BOTH') DEFAULT 'BOTH' COMMENT '标签生成模式：仅专业/仅兴趣/综合',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
@@ -155,6 +156,43 @@ CREATE TABLE IF NOT EXISTS `thesis` (
     CONSTRAINT `fk_thesis_student` FOREIGN KEY (`student_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='论文表';
 
+-- 11. 论文评价表（闭环评价数据）
+CREATE TABLE IF NOT EXISTS `thesis_evaluation` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '评价ID',
+    `thesis_id` BIGINT NOT NULL COMMENT '论文ID',
+    `student_id` BIGINT NOT NULL COMMENT '学生ID（冗余）',
+    `teacher_id` BIGINT NOT NULL COMMENT '导师ID（冗余）',
+    `score` DECIMAL(5,2) DEFAULT NULL COMMENT '导师给出的论文总评分（0-100）',
+    `defense_score` DECIMAL(5,2) DEFAULT NULL COMMENT '答辩成绩',
+    `review_score` DECIMAL(5,2) DEFAULT NULL COMMENT '评阅成绩',
+    `grade_level` VARCHAR(20) DEFAULT NULL COMMENT '等级：优/良/中/及格/不及格等',
+    `comment` TEXT COMMENT '导师评价摘要',
+    `student_score` DECIMAL(5,2) DEFAULT NULL COMMENT '学生对论文/指导的评分（0-100）',
+    `student_comment` TEXT COMMENT '学生对论文质量和指导情况的评价',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评价时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_thesis` (`thesis_id`),
+    KEY `idx_student_id` (`student_id`),
+    KEY `idx_teacher_id` (`teacher_id`),
+    CONSTRAINT `fk_eval_thesis` FOREIGN KEY (`thesis_id`) REFERENCES `thesis` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='论文评价表';
+
+-- 12. 选题质量统计表（按选题聚合评价结果，用于可视化）
+CREATE TABLE IF NOT EXISTS `topic_metrics` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `topic_id` BIGINT NOT NULL COMMENT '选题ID',
+    `teacher_id` BIGINT NOT NULL COMMENT '导师ID（冗余）',
+    `total_students` INT NOT NULL DEFAULT 0 COMMENT '选择该题的学生总数',
+    `avg_score` DECIMAL(5,2) DEFAULT NULL COMMENT '平均分',
+    `excellent_ratio` DECIMAL(5,4) DEFAULT NULL COMMENT '优秀率（0-1）',
+    `fail_ratio` DECIMAL(5,4) DEFAULT NULL COMMENT '不及格率（0-1）',
+    `last_updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近统计时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_topic` (`topic_id`),
+    KEY `idx_teacher_id` (`teacher_id`),
+    CONSTRAINT `fk_metrics_topic` FOREIGN KEY (`topic_id`) REFERENCES `topic` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='选题质量统计表';
+
 -- 11. 通知表
 CREATE TABLE IF NOT EXISTS `notification` (
     `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '通知ID',
@@ -172,6 +210,57 @@ CREATE TABLE IF NOT EXISTS `notification` (
     KEY `idx_created_at` (`created_at`),
     CONSTRAINT `fk_notification_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知表';
+
+-- 13. 选题/导师变更申请表（学生发起的返工与换导师申请）
+CREATE TABLE IF NOT EXISTS `change_request` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '变更申请ID',
+    `student_id` BIGINT NOT NULL COMMENT '学生ID',
+    `current_application_id` BIGINT NOT NULL COMMENT '当前生效的选题申请ID（topic_application.id）',
+    `type` ENUM('CHANGE_TOPIC', 'CHANGE_TEACHER') NOT NULL COMMENT '变更类型：更换选题 / 更换导师',
+    `reason` TEXT COMMENT '学生申请原因说明',
+    `target_topic_id` BIGINT DEFAULT NULL COMMENT '学生建议的新选题ID（可选）',
+    `target_teacher_id` BIGINT DEFAULT NULL COMMENT '学生建议的新导师ID（可选）',
+    `status` ENUM('PENDING_TEACHER', 'PENDING_ADMIN', 'APPROVED', 'REJECTED', 'CANCELLED') NOT NULL DEFAULT 'PENDING_TEACHER' COMMENT '当前处理状态',
+    `teacher_decision` ENUM('APPROVED', 'REJECTED') DEFAULT NULL COMMENT '导师审批结果（仅更换选题场景使用）',
+    `teacher_comment` TEXT COMMENT '导师审批意见',
+    `admin_decision` ENUM('APPROVED', 'REJECTED') DEFAULT NULL COMMENT '管理员审批结果（仅更换导师或最终确认使用）',
+    `admin_comment` TEXT COMMENT '管理员审批意见',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_student_id` (`student_id`),
+    KEY `idx_status` (`status`),
+    CONSTRAINT `fk_change_request_student` FOREIGN KEY (`student_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_change_request_application` FOREIGN KEY (`current_application_id`) REFERENCES `topic_application` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='选题/导师变更申请表';
+
+-- 14. 拜师申请表（学生发起的“先选导师”意向申请）
+CREATE TABLE IF NOT EXISTS `mentor_application` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '拜师申请ID',
+    `student_id` BIGINT NOT NULL COMMENT '学生ID',
+    `teacher_id` BIGINT NOT NULL COMMENT '导师ID',
+    `status` ENUM('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED') NOT NULL DEFAULT 'PENDING' COMMENT '申请状态',
+    `reason` TEXT COMMENT '学生申请说明（期望方向、个人计划等）',
+    `teacher_comment` TEXT COMMENT '导师审批意见',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_student_id` (`student_id`),
+    KEY `idx_teacher_id` (`teacher_id`),
+    KEY `idx_status` (`status`),
+    CONSTRAINT `fk_mentor_app_student` FOREIGN KEY (`student_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_mentor_app_teacher` FOREIGN KEY (`teacher_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='拜师申请表';
+
+-- 15. 系统设置表（全局配置，例如选题开放时间）
+CREATE TABLE IF NOT EXISTS `system_setting` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID（通常只使用一行记录）',
+    `selection_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '选题系统是否启用全局开关（0-关闭，1-开启）',
+    `selection_start_time` DATETIME DEFAULT NULL COMMENT '选题开放开始时间（可选，NULL 表示不限制开始时间）',
+    `selection_end_time` DATETIME DEFAULT NULL COMMENT '选题开放结束时间（可选，NULL 表示不限制结束时间）',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近更新时间',
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统全局设置表';
 
 -- 插入初始数据（可选）
 

@@ -36,6 +36,16 @@ const router = createRouter({
           component: () => import('@/views/student/Applications.vue')
         },
         {
+          path: 'teachers',
+          name: 'StudentTeachers',
+          component: () => import('@/views/student/Teachers.vue')
+        },
+        {
+          path: 'collab',
+          name: 'StudentCollab',
+          component: () => import('@/views/student/Collab.vue')
+        },
+        {
           path: 'profile',
           name: 'StudentProfile',
           component: () => import('@/views/student/Profile.vue')
@@ -63,6 +73,26 @@ const router = createRouter({
           component: () => import('@/views/teacher/Applications.vue')
         },
         {
+          path: 'mentor-applications',
+          name: 'TeacherMentorApplications',
+          component: () => import('@/views/teacher/MentorApplications.vue')
+        },
+        {
+          path: 'change-requests',
+          name: 'TeacherChangeRequests',
+          component: () => import('@/views/teacher/ChangeRequests.vue')
+        },
+        {
+          path: 'evaluation',
+          name: 'TeacherEvaluation',
+          component: () => import('@/views/teacher/EvaluationDashboard.vue')
+        },
+        {
+          path: 'collab',
+          name: 'TeacherCollab',
+          component: () => import('@/views/teacher/Collab.vue')
+        },
+        {
           path: 'profile',
           name: 'TeacherProfile',
           component: () => import('@/views/teacher/Profile.vue')
@@ -88,6 +118,21 @@ const router = createRouter({
           path: 'accounts',
           name: 'AdminAccounts',
           component: () => import('@/views/admin/Accounts.vue')
+        },
+        {
+          path: 'teacher-load',
+          name: 'AdminTeacherLoad',
+          component: () => import('@/views/admin/TeacherLoadAndChanges.vue')
+        },
+        {
+          path: 'monitor',
+          name: 'AdminMonitor',
+          component: () => import('@/views/admin/Monitor.vue')
+        },
+        {
+          path: 'evaluation',
+          name: 'AdminEvaluation',
+          component: () => import('@/views/admin/EvaluationDashboard.vue')
         }
       ]
     }

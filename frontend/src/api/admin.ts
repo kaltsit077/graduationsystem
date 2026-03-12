@@ -29,3 +29,47 @@ export const updateUserPassword = (userId: number, newPassword: string) => {
 export const resetPasswordsToDefault = (userIds: number[]) => {
   return request.post<number>('/admin/users/reset-password', { userIds })
 }
+
+/** 管理员删除账号（单个/批量） */
+export const deleteUsers = (userIds: number[]) => {
+  return request.post<number>('/admin/users/delete', { userIds })
+}
+
+export interface MonitorStatus {
+  uptimeMillis: number
+  uptime: string
+  heapUsedMb: number
+  heapMaxMb: number
+  threadCount: number
+  systemLoadAverage: number
+  activeDbConnections: number
+  idleDbConnections: number
+}
+
+export const getMonitorStatus = () => {
+  return request.get<MonitorStatus>('/admin/monitor/status')
+}
+
+export const getMonitorLogs = (params: { level?: string; lines?: number }) => {
+  return request.get<string[]>('/admin/monitor/logs', { params })
+}
+
+// 选题系统开放设置
+export interface SelectionSetting {
+  enabled: boolean
+  startTime?: string | null
+  endTime?: string | null
+  openNow: boolean
+}
+
+export const getSelectionSetting = () => {
+  return request.get<SelectionSetting>('/admin/selection-setting')
+}
+
+export const updateSelectionSetting = (data: {
+  enabled: boolean
+  startTime?: string | null
+  endTime?: string | null
+}) => {
+  return request.post<SelectionSetting>('/admin/selection-setting', data)
+}

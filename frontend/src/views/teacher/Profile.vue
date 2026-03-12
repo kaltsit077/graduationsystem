@@ -12,7 +12,7 @@
           <el-input v-model="form.username" disabled />
         </el-form-item>
         <el-form-item label="姓名">
-          <el-input v-model="form.realName" disabled />
+          <el-input v-model="form.realName" />
         </el-form-item>
         <el-form-item label="职称">
           <el-input v-model="form.title" />
@@ -64,7 +64,7 @@ import { getTeacherProfile, updateTeacherProfile, type UserTag } from '@/api/tea
 const authStore = useAuthStore()
 
 const form = ref({
-  username: authStore.token || '',
+  username: '',
   realName: authStore.realName || '',
   title: '',
   researchDirection: '',
@@ -82,6 +82,8 @@ const loadProfile = async () => {
   try {
     const res = await getTeacherProfile()
     if (res.data) {
+      form.value.username = res.data.username || form.value.username
+      form.value.realName = res.data.realName || form.value.realName
       form.value.title = res.data.title || ''
       form.value.researchDirection = res.data.researchDirection || ''
       form.value.maxStudentCount = res.data.maxStudentCount || 10
@@ -96,11 +98,15 @@ const saveProfile = async () => {
   saving.value = true
   try {
     await updateTeacherProfile({
+      realName: form.value.realName,
       title: form.value.title,
       researchDirection: form.value.researchDirection,
       maxStudentCount: form.value.maxStudentCount
     })
     ElMessage.success('保存成功，标签已自动生成')
+    if (form.value.realName) {
+      authStore.setRealName(form.value.realName)
+    }
     await loadProfile()
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')

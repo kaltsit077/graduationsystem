@@ -1,89 +1,86 @@
 @echo off
-REM ========================================
-REM  生产环境部署脚本
-REM ========================================
-
 chcp 65001 >nul 2>&1
+setlocal
+
 echo ========================================
-echo  生产环境部署脚本
+echo  Production deployment
 echo ========================================
 echo.
 
-REM 检查 .env 文件
 if not exist ".env" (
-    echo [错误] 未找到 .env 文件
+    echo [ERROR] Missing .env file.
     echo.
-    echo 请先创建 .env 文件并配置以下内容：
-    echo   MYSQL_ROOT_PASSWORD=你的强密码
-    echo   MYSQL_PASSWORD=你的强密码
-    echo   DB_PASSWORD=你的强密码
-    echo   JWT_SECRET=你的64字节密钥
-    echo   ADMIN_PASSWORD=你的强密码
+    echo Create .env and set at least:
+    echo   MYSQL_ROOT_PASSWORD=...
+    echo   MYSQL_PASSWORD=...
+    echo   DB_PASSWORD=...
+    echo   JWT_SECRET=...
+    echo   ADMIN_PASSWORD=...
     echo.
-    echo 可以参考 .env.example 文件
+    echo You can copy from .env.example
     pause
     exit /b 1
 )
 
-echo [1/4] 检查 Docker 环境...
+echo [1/4] Checking Docker...
 docker --version >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 未安装 Docker，请先安装 Docker Desktop
+    echo [ERROR] Docker not found. Install Docker Desktop first.
     pause
     exit /b 1
 )
-echo [✓] Docker 环境检查通过
+echo [OK] Docker detected.
 
 docker-compose --version >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 未安装 Docker Compose
+    echo [ERROR] docker-compose not found.
     pause
     exit /b 1
 )
-echo [✓] Docker Compose 环境检查通过
+echo [OK] docker-compose detected.
 echo.
 
-echo [2/4] 停止现有服务...
+echo [2/4] Stopping existing services...
 docker-compose -f docker-compose.prod.yml down
-echo [✓] 服务已停止
+echo [OK] Stopped.
 echo.
 
-echo [3/4] 构建镜像...
+echo [3/4] Building images...
 docker-compose -f docker-compose.prod.yml build --no-cache
 if errorlevel 1 (
-    echo [错误] 镜像构建失败
+    echo [ERROR] Build failed.
     pause
     exit /b 1
 )
-echo [✓] 镜像构建完成
+echo [OK] Build complete.
 echo.
 
-echo [4/4] 启动服务...
+echo [4/4] Starting services...
 docker-compose -f docker-compose.prod.yml up -d
 if errorlevel 1 (
-    echo [错误] 服务启动失败
+    echo [ERROR] Start failed.
     pause
     exit /b 1
 )
-echo [✓] 服务启动成功
+echo [OK] Services started.
 echo.
 
 echo ========================================
-echo  部署完成！
+echo  Done
 echo ========================================
 echo.
-echo [服务状态]
+echo [Status]
 docker-compose -f docker-compose.prod.yml ps
 echo.
-echo [访问地址]
-echo   前端: http://localhost
-echo   后端API: http://localhost:9090/api
-echo   健康检查: http://localhost:9090/api/ping
+echo [URLs]
+echo   Frontend: http://localhost
+echo   Backend API: http://localhost:9090/api
+echo   Health: http://localhost:9090/api/ping
 echo.
-echo [查看日志]
+echo [Logs]
 echo   docker-compose -f docker-compose.prod.yml logs -f
 echo.
-echo [停止服务]
+echo [Stop]
 echo   docker-compose -f docker-compose.prod.yml down
 echo.
 pause

@@ -14,7 +14,16 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:9090',
-        changeOrigin: true
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            // 确保 Authorization 头被转发到后端（部分代理会默认移除）
+            const auth = (req.headers as Record<string, string>).authorization
+            if (auth) {
+              proxyReq.setHeader('Authorization', auth)
+            }
+          })
+        }
       }
     }
   }

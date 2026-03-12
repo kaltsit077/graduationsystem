@@ -5,7 +5,9 @@ import com.example.graduation.dto.StudentProfileRequest;
 import com.example.graduation.dto.StudentProfileResponse;
 import com.example.graduation.dto.UserTagResponse;
 import com.example.graduation.entity.StudentProfile;
+import com.example.graduation.entity.User;
 import com.example.graduation.entity.UserTag;
+import com.example.graduation.mapper.UserMapper;
 import com.example.graduation.service.StudentService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,9 @@ public class StudentController {
     
     @Autowired
     private StudentService studentService;
+
+    @Autowired
+    private UserMapper userMapper;
     
     /**
      * 获取当前用户ID
@@ -38,11 +43,18 @@ public class StudentController {
         List<UserTag> tags = studentService.getTags(userId);
         
         StudentProfileResponse response = new StudentProfileResponse();
+        response.setUserId(userId);
+
+        User user = userMapper.selectById(userId);
+        if (user != null) {
+            response.setUsername(user.getUsername());
+            response.setRealName(user.getRealName());
+        }
         if (profile != null) {
-            response.setUserId(profile.getUserId());
             response.setMajor(profile.getMajor());
             response.setGrade(profile.getGrade());
             response.setInterestDesc(profile.getInterestDesc());
+            response.setTagMode(profile.getTagMode());
         }
         
         List<UserTagResponse> tagResponses = tags.stream().map(tag -> {
@@ -67,18 +79,26 @@ public class StudentController {
         
         StudentProfile profile = studentService.updateProfile(
                 userId,
+                requestDto.getRealName(),
                 requestDto.getMajor(),
                 requestDto.getGrade(),
-                requestDto.getInterestDesc()
+                requestDto.getInterestDesc(),
+                requestDto.getTagMode()
         );
         
         List<UserTag> tags = studentService.getTags(userId);
         
         StudentProfileResponse response = new StudentProfileResponse();
-        response.setUserId(profile.getUserId());
+        response.setUserId(userId);
+        User user = userMapper.selectById(userId);
+        if (user != null) {
+            response.setUsername(user.getUsername());
+            response.setRealName(user.getRealName());
+        }
         response.setMajor(profile.getMajor());
         response.setGrade(profile.getGrade());
         response.setInterestDesc(profile.getInterestDesc());
+        response.setTagMode(profile.getTagMode());
         
         List<UserTagResponse> tagResponses = tags.stream().map(tag -> {
             UserTagResponse tagResponse = new UserTagResponse();

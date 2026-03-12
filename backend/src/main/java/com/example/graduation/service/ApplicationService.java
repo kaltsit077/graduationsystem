@@ -25,11 +25,21 @@ public class ApplicationService {
     @Autowired
     private NotificationService notificationService;
     
+    @Autowired
+    private SystemSettingService systemSettingService;
+
+    @Autowired
+    private MatchService matchService;
+    
     /**
      * 学生提交选题申请
      */
     @Transactional
     public TopicApplication submitApplication(Long topicId, Long studentId, String remark, BigDecimal matchScore) {
+        // 全局选题开关与时间窗口控制
+        if (!systemSettingService.isSelectionOpenNow()) {
+            throw new RuntimeException("当前不在选题开放时间内，请联系管理员");
+        }
         // 检查选题是否存在且开放
         Topic topic = topicMapper.selectById(topicId);
         if (topic == null) {
@@ -172,6 +182,15 @@ public class ApplicationService {
         }
         
         return applicationMapper.selectList(wrapper);
+    }
+    
+    /**
+     * 计算学生与选题的匹配度（对外仍暴露在 ApplicationService 上，内部委托给 MatchService）。
+     *
+     * 这样可以在不修改控制器调用方式的前提下，将匹配算法独立出来，后续升级只需改 MatchService。
+     */
+    public BigDecimal calculateMatchScore(Topic topic, Long studentId) {
+        return matchService.calculateMatchScore(topic, studentId);
     }
 }
 

@@ -12,7 +12,7 @@
           <el-input v-model="form.username" disabled />
         </el-form-item>
         <el-form-item label="姓名">
-          <el-input v-model="form.realName" disabled />
+          <el-input v-model="form.realName" />
         </el-form-item>
         <el-form-item label="专业">
           <el-input v-model="form.major" />
@@ -28,6 +28,13 @@
             placeholder="请描述您的兴趣爱好和研究方向"
           />
         </el-form-item>
+      <el-form-item label="标签生成模式">
+        <el-radio-group v-model="form.tagMode">
+          <el-radio label="BOTH">综合（专业 + 兴趣）</el-radio>
+          <el-radio label="MAJOR">仅根据专业生成</el-radio>
+          <el-radio label="INTEREST">仅根据兴趣生成</el-radio>
+        </el-radio-group>
+      </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="saveProfile" :loading="saving">保存</el-button>
         </el-form-item>
@@ -65,11 +72,12 @@ import { getStudentProfile, updateStudentProfile, type UserTag } from '@/api/stu
 const authStore = useAuthStore()
 
 const form = ref({
-  username: authStore.token || '',
+  username: '',
   realName: authStore.realName || '',
   major: '',
   grade: '',
-  interestDesc: ''
+  interestDesc: '',
+  tagMode: 'BOTH' as 'MAJOR' | 'INTEREST' | 'BOTH'
 })
 
 const tags = ref<UserTag[]>([])
@@ -83,9 +91,12 @@ const loadProfile = async () => {
   try {
     const res = await getStudentProfile()
     if (res.data) {
+      form.value.username = res.data.username || form.value.username
+      form.value.realName = res.data.realName || form.value.realName
       form.value.major = res.data.major || ''
       form.value.grade = res.data.grade || ''
       form.value.interestDesc = res.data.interestDesc || ''
+      form.value.tagMode = (res.data.tagMode as any) || 'BOTH'
       tags.value = res.data.tags || []
     }
   } catch (error) {
@@ -97,11 +108,16 @@ const saveProfile = async () => {
   saving.value = true
   try {
     await updateStudentProfile({
+      realName: form.value.realName,
       major: form.value.major,
       grade: form.value.grade,
-      interestDesc: form.value.interestDesc
+      interestDesc: form.value.interestDesc,
+      tagMode: form.value.tagMode
     })
     ElMessage.success('保存成功')
+    if (form.value.realName) {
+      authStore.setRealName(form.value.realName)
+    }
     await loadProfile()
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')

@@ -58,8 +58,8 @@ docs/
 ## 🚀 快速访问
 
 ### 开发环境
-- 启动开发环境：运行 `../scripts/start.bat`
-- Docker 开发模式：运行 `../scripts/start-docker-dev.bat`
+- 一键启动（推荐，Docker 后台运行）：运行 `../run.bat`
+- Docker 开发模式（前台日志 + 热更新）：运行 `../scripts/docker-dev-up.bat`
 
 ### 数据库操作
 - 初始化数据库：运行 `../scripts/init-database.bat`

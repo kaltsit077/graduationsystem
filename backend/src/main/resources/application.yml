@@ -16,6 +16,15 @@ spring:
       max-lifetime: 1800000
       connection-test-query: SELECT 1
 
+  # SQL 初始化（创建表结构等）
+  # 注意：spring.sql.init 必须配置在 spring 下，而不是 spring.datasource 下
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      # 如需初始化演示数据，可启用 data-locations
+      # data-locations: classpath:db/init-data.sql
+
   jackson:
     time-zone: Asia/Shanghai
 
@@ -31,21 +40,24 @@ jwt:
   secret: "QxuhaiYhazhkrYbbJQwhvJd06GVWAq09YCC7NceNjsM2GDciiM30tClcrS2pD3+nDV2cIrQIVK0qnFJLqbCIRw=="
   expiration-minutes: 120
 
-# 默认管理员账号配置（已禁用自动创建，管理员账号通过数据库脚本创建）
+# 默认管理员账号配置（已禁用自动创建，如需初始化请手工插入数据库）
 admin:
   username: admin
   password: 123456
   real-name: 系统管理员
-  auto-create: false  # 已禁用自动创建，管理员账号通过 init-data.sql 创建
+  auto-create: false
 
 # AI 标签抽取（可选）：从研究方向/兴趣描述中自动抽取关键词作为用户标签
 # 未配置或 enabled=false 时仍使用原有的按逗号/空格分词逻辑
 ai:
   tag:
-    enabled: false
-    # 兼容 OpenAI 的聊天接口，例如 https://api.openai.com/v1/chat/completions 或智谱/通义等
-    api-url: https://api.openai.com/v1/chat/completions
-    api-key: ""   # 生产环境请通过环境变量 AI_TAG_API_KEY 或配置中心设置
-    model: gpt-3.5-turbo
+    enabled: true
+    api-url: https://gcli.ggchan.dev/v1/chat/completions
+    api-key: ${AI_TAG_API_KEY:}
+    model: gemini-2.5-flash
     timeout-ms: 10000
 
+# 语义向量服务（本地 sentence-transformers / bge）
+embedding:
+  enabled: true
+  base-url: http://localhost:8000

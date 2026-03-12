@@ -47,8 +47,9 @@ public class ApplicationController {
             HttpServletRequest request) {
         Long studentId = getCurrentUserId(request);
         
-        // 目前匹配度先设为0.5，后续可以实现匹配算法计算
-        BigDecimal matchScore = new BigDecimal("0.5");
+        // 计算匹配度：基于学生标签与选题内容的重合度
+        Topic topic = topicMapper.selectById(requestDto.getTopicId());
+        BigDecimal matchScore = applicationService.calculateMatchScore(topic, studentId);
         
         TopicApplication application = applicationService.submitApplication(
                 requestDto.getTopicId(),
@@ -128,11 +129,12 @@ public class ApplicationController {
         response.setCreatedAt(application.getCreatedAt());
         response.setUpdatedAt(application.getUpdatedAt());
         
-        // 获取选题标题
+        // 获取选题标题与导师ID
         if (application.getTopicId() != null) {
             Topic topic = topicMapper.selectById(application.getTopicId());
             if (topic != null) {
                 response.setTopicTitle(topic.getTitle());
+                response.setTeacherId(topic.getTeacherId());
             }
         }
         

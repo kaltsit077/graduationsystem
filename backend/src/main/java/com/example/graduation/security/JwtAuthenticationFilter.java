@@ -38,20 +38,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String username = jwtUtil.getUsernameFromToken(token);
                 String role = jwtUtil.getRoleFromToken(token);
                 
-                // 确保角色格式正确（转换为大写，并添加 ROLE_ 前缀）
-                String roleUpper = role != null ? role.toUpperCase() : "";
-                String authority = "ROLE_" + roleUpper;
+                // 统一角色规范：
+                // - token 内 role 永远存 "STUDENT"/"TEACHER"/"ADMIN"（不带 ROLE_ 前缀）
+                // - Spring Security authorities 永远使用 "ROLE_STUDENT"/...（供 hasRole/hasAnyRole 使用）
+                String roleUpper = role != null ? role.trim().toUpperCase() : "";
+                String roleNoPrefix = roleUpper.startsWith("ROLE_") ? roleUpper.substring("ROLE_".length()) : roleUpper;
+                String authority = roleNoPrefix.isEmpty() ? "" : "ROLE_" + roleNoPrefix;
                 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         username,
                         null,
-                        Collections.singletonList(new SimpleGrantedAuthority(authority))
+                        authority.isEmpty()
+                                ? Collections.emptyList()
+                                : Collections.singletonList(new SimpleGrantedAuthority(authority))
                 );
                 
                 // 将用户信息存储到request属性中，方便后续使用
                 request.setAttribute("userId", userId);
                 request.setAttribute("username", username);
-                request.setAttribute("role", roleUpper);
+                request.setAttribute("role", roleNoPrefix);
                 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (Exception e) {
