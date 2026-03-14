@@ -53,8 +53,16 @@ request.interceptors.response.use(
       } else {
         ElMessage.error(msg || '请求失败')
       }
+      // 将后端返回的 message 挂到 error 上，便于登录页等直接使用 error.message
+      if (msg) {
+        error.message = msg
+      }
     } else {
-      ElMessage.error('网络错误，请稍后重试')
+      if (error.code === 'ECONNABORTED' || (typeof error.message === 'string' && error.message.includes('timeout'))) {
+        ElMessage.error('请求超时，请稍后重试')
+      } else {
+        ElMessage.error('网络错误，请稍后重试')
+      }
     }
     return Promise.reject(error)
   }

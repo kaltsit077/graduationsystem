@@ -88,7 +88,12 @@
     </el-card>
 
     <!-- 修改密码弹窗 -->
-    <el-dialog v-model="passwordDialogVisible" title="修改密码" width="400px" @close="closePasswordDialog">
+    <AppDialog
+      v-model="passwordDialogVisible"
+      title="修改密码"
+      width="400px"
+      :close-on-click-modal="false"
+    >
       <el-form :model="passwordForm" label-width="80px">
         <el-form-item label="账号">
           <span>{{ passwordForm.username }}（{{ passwordForm.realName }}）</span>
@@ -107,13 +112,14 @@
         <el-button @click="passwordDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitChangePassword" :loading="passwordSubmitting">确定</el-button>
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import AppDialog from '@/components/AppDialog.vue'
 import type { TableInstance } from 'element-plus'
 import {
   getAdminTeachers,
@@ -189,6 +195,10 @@ function openChangePassword(row: AdminUser) {
 function closePasswordDialog() {
   passwordForm.value = { userId: 0, username: '', realName: '', newPassword: '' }
 }
+
+watch(passwordDialogVisible, (visible) => {
+  if (!visible) closePasswordDialog()
+})
 
 const submitChangePassword = async () => {
   const pwd = passwordForm.value.newPassword?.trim()

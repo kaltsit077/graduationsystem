@@ -26,7 +26,12 @@
     </el-card>
 
     <!-- 选题详情对话框 -->
-    <el-dialog v-model="dialogVisible" title="选题详情" width="720px" class="topic-dialog">
+    <AppDialog
+      v-model="dialogVisible"
+      title="选题详情"
+      width="720px"
+      :close-on-click-modal="false"
+    >
       <div v-if="selectedTopic" class="topic-dialog-body">
         <div class="topic-dialog-main">
           <div class="topic-title-row">
@@ -100,10 +105,15 @@
           </div>
         </div>
       </template>
-    </el-dialog>
+    </AppDialog>
 
     <!-- 申请对话框 -->
-    <el-dialog v-model="applyDialogVisible" title="提交申请" width="640px" class="topic-dialog">
+    <AppDialog
+      v-model="applyDialogVisible"
+      title="提交申请"
+      width="640px"
+      :close-on-click-modal="false"
+    >
       <div class="apply-dialog-body">
         <div class="apply-dialog-summary" v-if="selectedTopic">
           <div class="summary-title">{{ selectedTopic.title }}</div>
@@ -138,13 +148,14 @@
           提交申请
         </el-button>
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import AppDialog from '@/components/AppDialog.vue'
 import { getOpenTopics, type Topic } from '@/api/topic'
 import { submitApplication } from '@/api/application'
 
@@ -229,9 +240,6 @@ const submitApply = async () => {
   align-items: center;
 }
 
-.topic-dialog :deep(.el-dialog) {
-  border-radius: 14px;
-}
 
 .topic-dialog-body {
   display: flex;

@@ -1,6 +1,7 @@
 package com.example.graduation.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.graduation.dto.UserTagResponse;
 import com.example.graduation.entity.TeacherProfile;
 import com.example.graduation.entity.User;
 import com.example.graduation.entity.UserTag;
@@ -89,6 +90,33 @@ public class TeacherService {
     @Transactional
     public void updateTags(Long userId, List<UserTag> tags) {
         tagService.updateUserTags(userId, tags);
+    }
+
+    /**
+     * 交互式重生成导师标签：保留 pinnedTags，并排除 excludeTagNames。
+     * 这里复用学生标签的生成逻辑，但仅基于研究方向文本。
+     */
+    @Transactional
+    public List<UserTag> regenerateTags(
+            Long userId,
+            String researchDirection,
+            List<UserTagResponse> pinnedTags,
+            List<String> excludeTagNames,
+            Integer desiredTotal) {
+        List<UserTag> pinned = new java.util.ArrayList<>();
+        if (pinnedTags != null) {
+            for (UserTagResponse t : pinnedTags) {
+                if (t == null || t.getTagName() == null || t.getTagName().trim().isEmpty()) {
+                    continue;
+                }
+                UserTag tag = new UserTag();
+                tag.setTagName(t.getTagName().trim());
+                tag.setWeight(t.getWeight());
+                pinned.add(tag);
+            }
+        }
+        // 复用学生标签重生成逻辑：只传入“兴趣描述”一项，这里用导师的研究方向文本替代。
+        return tagService.regenerateStudentTags(userId, researchDirection, null, "INTEREST", pinned, excludeTagNames, desiredTotal);
     }
 }
 

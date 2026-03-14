@@ -11,10 +11,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-/**
- * 使用大模型从文本中抽取标签（关键词）。
- * 需配置 ai.tag.enabled=true 及 api-url、api-key，兼容 OpenAI 格式的聊天接口。
- */
+
 @Service
 public class AiTagService {
 
@@ -96,9 +93,118 @@ public class AiTagService {
                 return Collections.emptyList();
             }
 
-            return parseTagNames(content.toString());
+            List<String> tags = parseTagNames(content.toString());
+            if (!tags.isEmpty()) {
+                log.info("AI 标签抽取成功，文本长度={}，生成标签={}", text.length(), tags);
+            } else {
+                log.info("AI 标签抽取返回内容为空或未解析出有效标签，文本长度={}", text.length());
+            }
+            return tags;
         } catch (Exception e) {
             log.warn("AI 标签抽取请求失败，将使用规则抽取: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 交互式抽取：支持“期望数量”和“排除标签”。
+     * - desiredCount: 希望模型输出的标签数量（<=0 则不强制）
+     * - excludeTagNames: 模型不应输出的标签（可为空）
+     */
+    public List<String> extractTagNames(String text, int desiredCount, Collection<String> excludeTagNames) {
+        if (text == null || text.isBlank()) {
+            return Collections.emptyList();
+        }
+        if (!properties.isEnabled()) {
+            return Collections.emptyList();
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(PROMPT_TEMPLATE.formatted(text.trim()));
+        if (desiredCount > 0) {
+            sb.append("\\n\\n额外要求：请输出 ").append(desiredCount).append(" 个标签。");
+        }
+        if (excludeTagNames != null) {
+            List<String> cleaned = excludeTagNames.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .distinct()
+                    .toList();
+            if (!cleaned.isEmpty()) {
+                sb.append("\\n额外要求：不要输出以下任何标签（含同义近似表述）：");
+                sb.append(String.join("、", cleaned));
+                sb.append("。");
+            }
+        }
+
+        String prompt = sb.toString();
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", properties.getModel());
+        requestBody.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(properties.getApiKey());
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    properties.getApiUrl(),
+                    HttpMethod.POST,
+                    entity,
+                    Map.class
+            );
+
+            if (response.getBody() == null) {
+                return Collections.emptyList();
+            }
+
+            Object choices = response.getBody().get("choices");
+            if (!(choices instanceof List) || ((List<?>) choices).isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            Object first = ((List<?>) choices).get(0);
+            if (!(first instanceof Map)) {
+                return Collections.emptyList();
+            }
+
+            Object message = ((Map<?, ?>) first).get("message");
+            if (!(message instanceof Map)) {
+                return Collections.emptyList();
+            }
+
+            Object content = ((Map<?, ?>) message).get("content");
+            if (content == null || content.toString().isBlank()) {
+                return Collections.emptyList();
+            }
+
+            List<String> tags = parseTagNames(content.toString());
+            if (excludeTagNames != null && !excludeTagNames.isEmpty() && !tags.isEmpty()) {
+                Set<String> excludeLower = excludeTagNames.stream()
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(String::toLowerCase)
+                        .collect(Collectors.toSet());
+                tags = tags.stream()
+                        .filter(t -> !excludeLower.contains(t.toLowerCase()))
+                        .collect(Collectors.toList());
+            }
+            if (desiredCount > 0 && tags.size() > desiredCount) {
+                tags = tags.subList(0, desiredCount);
+            }
+
+            if (!tags.isEmpty()) {
+                log.info("AI 标签抽取成功(交互)，文本长度={}，生成标签={}", text.length(), tags);
+            } else {
+                log.info("AI 标签抽取(交互)返回内容为空或未解析出有效标签，文本长度={}", text.length());
+            }
+            return tags;
+        } catch (Exception e) {
+            log.warn("AI 标签抽取请求失败(交互)，将使用规则抽取: {}", e.getMessage());
             return Collections.emptyList();
         }
     }

@@ -30,7 +30,12 @@
       </template>
     </collab-panel>
 
-    <el-dialog v-model="uploadDialogVisible" title="上传作业" width="500px">
+    <AppDialog
+      v-model="uploadDialogVisible"
+      title="上传作业"
+      width="500px"
+      :close-on-click-modal="false"
+    >
       <el-form :model="uploadForm" label-width="100px">
         <el-form-item label="文件名">
           <el-input v-model="uploadForm.fileName" placeholder="示例：毕业论文初稿.docx" />
@@ -46,9 +51,14 @@
         <el-button @click="uploadDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitUpload" :loading="uploading">确定</el-button>
       </template>
-    </el-dialog>
+    </AppDialog>
 
-    <el-dialog v-model="feedbackDialogVisible" title="评价论文与导师" width="500px">
+    <AppDialog
+      v-model="feedbackDialogVisible"
+      title="评价论文与导师"
+      width="500px"
+      :close-on-click-modal="false"
+    >
       <el-form :model="feedbackForm" label-width="110px">
         <el-form-item label="整体评分（0-100）" required>
           <el-input v-model.number="feedbackForm.score" type="number" min="0" max="100" />
@@ -66,9 +76,14 @@
         <el-button @click="feedbackDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitFeedback" :loading="savingFeedback">提交</el-button>
       </template>
-    </el-dialog>
+    </AppDialog>
 
-    <el-dialog v-model="changeDialogVisible" :title="changeDialogTitle" width="520px">
+    <AppDialog
+      v-model="changeDialogVisible"
+      :title="changeDialogTitle"
+      width="520px"
+      :close-on-click-modal="false"
+    >
       <el-form :model="changeForm" label-width="100px">
         <el-form-item label="申请类型">
           <el-tag type="info" v-if="changeForm.type === 'CHANGE_TOPIC'">更换选题</el-tag>
@@ -87,13 +102,14 @@
         <el-button @click="changeDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submittingChange" @click="submitChangeRequest">提交申请</el-button>
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import AppDialog from '@/components/AppDialog.vue'
 import CollabPanel from '@/components/CollabPanel.vue'
 import { getMyApplications, type Application } from '@/api/application'
 import { getMyTheses, uploadThesis, type Thesis } from '@/api/thesis'

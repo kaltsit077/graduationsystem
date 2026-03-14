@@ -146,11 +146,12 @@ public class AdminController {
     }
 
     /**
-     * 最近的错误日志（默认 ERROR 级别，倒数 N 行）
+     * 最近的日志（按级别过滤，倒数 N 行）
+     * level: ALL, DEBUG, INFO, WARN, ERROR, WARN_AND_ERROR（仅 WARN 与 ERROR）
      */
     @GetMapping("/monitor/logs")
     public ApiResponse<List<String>> getLogs(
-            @RequestParam(name = "level", defaultValue = "ERROR") String level,
+            @RequestParam(name = "level", defaultValue = "ALL") String level,
             @RequestParam(name = "lines", defaultValue = "200") int lines) {
         Path path = Paths.get(logFilePath);
         if (!Files.exists(path)) {
@@ -163,15 +164,56 @@ public class AdminController {
             List<String> tail = new ArrayList<>(allLines.subList(fromIndex, allLines.size()));
 
             if (level != null && !level.isBlank() && !"ALL".equalsIgnoreCase(level)) {
-                String keyword = level.toUpperCase();
-                tail = tail.stream()
-                        .filter(s -> s.contains(" " + keyword + " ") || s.contains("[" + keyword + "]"))
-                        .collect(Collectors.toList());
+                String key = level.toUpperCase();
+                if ("WARN_AND_ERROR".equals(key)) {
+                    tail = tail.stream()
+                            .filter(s -> matchesLevel(s, "WARN") || matchesLevel(s, "ERROR"))
+                            .collect(Collectors.toList());
+                } else {
+                    tail = tail.stream()
+                            .filter(s -> matchesLevel(s, key))
+                            .collect(Collectors.toList());
+                }
             }
 
             return ApiResponse.success(tail);
         } catch (IOException e) {
             return ApiResponse.error("读取日志失败: " + e.getMessage());
+        }
+    }
+
+    /** 判断一行日志是否包含指定级别（支持常见格式如 " ERROR "、"[ERROR]"、".ERROR " 等） */
+    private static boolean matchesLevel(String line, String level) {
+        if (line == null || level == null) return false;
+        String u = level.toUpperCase();
+        return line.contains(" " + u + " ") || line.contains("[" + u + "]")
+                || line.contains("." + u + " ") || line.contains("." + u + "]")
+                || line.contains("\t" + u + " ") || line.contains("\t" + u + "\t");
+    }
+
+    /**
+     * 手动清除日志文件内容（清空文件，便于排查时只看新产生的日志）
+     * 若日志正被写入（同进程占用），可能失败并返回提示。
+     */
+    @PostMapping("/monitor/logs/clear")
+    public ApiResponse<Void> clearLogs() {
+        Path path = Paths.get(logFilePath).toAbsolutePath().normalize();
+        if (!Files.exists(path)) {
+            return ApiResponse.success(null);
+        }
+        try {
+            try (java.io.OutputStream os = Files.newOutputStream(path,
+                    java.nio.file.StandardOpenOption.WRITE,
+                    java.nio.file.StandardOpenOption.TRUNCATE_EXISTING)) {
+                // 清空文件
+            }
+            return ApiResponse.success(null);
+        } catch (IOException e) {
+            String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (msg.contains("being used") || msg.contains("另一个程序") || msg.contains("access") || msg.contains("拒绝")) {
+                return ApiResponse.error("清除失败：日志文件正被占用，请稍后重试或重启后端服务后再清除");
+            }
+            return ApiResponse.error("清除日志失败: " + e.getMessage());
         }
     }
 

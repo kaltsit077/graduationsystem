@@ -2,6 +2,24 @@
   <el-container class="layout-container">
     <el-header class="layout-header">
       <div class="header-left">
+        <button
+          class="aside-toggle"
+          type="button"
+          @click="toggleAside"
+          :class="{ collapsed: isAsideCollapsed }"
+          :aria-label="isAsideCollapsed ? '展开侧边栏' : '折叠侧边栏'"
+        >
+          <span
+            class="win-tiles"
+            :class="[{ diamond: isAsideCollapsed, 'square-back': squareBackAnimating }]"
+            aria-hidden="true"
+          >
+            <i class="tile t1"></i>
+            <i class="tile t2"></i>
+            <i class="tile t3"></i>
+            <i class="tile t4"></i>
+          </span>
+        </button>
         <h2>毕业论文选题系统 - 导师端</h2>
       </div>
       <div class="header-right">
@@ -17,10 +35,6 @@
                 <el-icon><User /></el-icon>
                 <span>个人资料</span>
               </el-dropdown-item>
-              <el-dropdown-item command="settings" divided>
-                <el-icon><Setting /></el-icon>
-                <span>账号设置</span>
-              </el-dropdown-item>
               <el-dropdown-item command="logout" divided>
                 <el-icon><SwitchButton /></el-icon>
                 <span>退出登录</span>
@@ -31,39 +45,35 @@
       </div>
     </el-header>
     <el-container>
-      <el-aside width="220px" class="layout-aside">
-        <el-menu
-          :default-active="activeMenu"
-          router
-          class="sidebar-menu"
-        >
+      <el-aside :width="asideWidth" class="layout-aside" :class="{ collapsed: isAsideCollapsed }">
+        <el-menu :default-active="activeMenu" router class="sidebar-menu" :collapse="isAsideCollapsed" :collapse-transition="false">
           <el-menu-item index="/teacher">
             <el-icon><HomeFilled /></el-icon>
-            <span>首页</span>
+            <template #title>首页</template>
           </el-menu-item>
           <el-menu-item index="/teacher/topics">
             <el-icon><Document /></el-icon>
-            <span>选题管理</span>
+            <template #title>选题管理</template>
           </el-menu-item>
           <el-menu-item index="/teacher/applications">
             <el-icon><List /></el-icon>
-            <span>申请处理</span>
+            <template #title>申请处理</template>
           </el-menu-item>
           <el-menu-item index="/teacher/change-requests">
             <el-icon><List /></el-icon>
-            <span>变更申请</span>
+            <template #title>变更申请</template>
           </el-menu-item>
           <el-menu-item index="/teacher/evaluation">
             <el-icon><Document /></el-icon>
-            <span>选题质量</span>
+            <template #title>选题质量</template>
           </el-menu-item>
           <el-menu-item index="/teacher/collab">
             <el-icon><Document /></el-icon>
-            <span>协作中心</span>
+            <template #title>协作中心</template>
           </el-menu-item>
           <el-menu-item index="/teacher/profile">
             <el-icon><User /></el-icon>
-            <span>个人中心</span>
+            <template #title>个人中心</template>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -77,10 +87,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox, ElMessage } from 'element-plus'
-import { HomeFilled, Document, List, User, ArrowDown, Setting, SwitchButton } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
+import { HomeFilled, Document, List, User, ArrowDown, SwitchButton } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -88,6 +98,23 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const activeMenu = computed(() => route.path)
+
+const isAsideCollapsed = ref(false)
+const squareBackAnimating = ref(false)
+const asideWidth = computed(() => (isAsideCollapsed.value ? '64px' : '220px'))
+
+const toggleAside = () => {
+  if (isAsideCollapsed.value) {
+    isAsideCollapsed.value = false
+    squareBackAnimating.value = true
+    setTimeout(() => {
+      squareBackAnimating.value = false
+    }, 260)
+  } else {
+    isAsideCollapsed.value = true
+    squareBackAnimating.value = false
+  }
+}
 
 const handleCommand = async (command: string) => {
   if (command === 'logout') {
@@ -104,8 +131,6 @@ const handleCommand = async (command: string) => {
     }
   } else if (command === 'profile') {
     router.push('/teacher/profile')
-  } else if (command === 'settings') {
-    ElMessage.info('账号设置功能开发中')
   }
 }
 </script>
@@ -124,6 +149,12 @@ const handleCommand = async (command: string) => {
   align-items: center;
   padding: 0 28px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .header-left h2 {
@@ -157,7 +188,9 @@ const handleCommand = async (command: string) => {
 }
 
 .user-name {
-  font-size: 14px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
 }
 
 .arrow-icon {
@@ -173,12 +206,192 @@ const handleCommand = async (command: string) => {
   background: #fff;
   border-right: 1px solid #e4e7ed;
   box-shadow: 4px 0 16px rgba(0, 0, 0, 0.03);
+  position: relative;
+  transition: width 0.25s ease-out;
+  overflow: hidden;
 }
 
 .sidebar-menu {
   border-right: none;
   height: 100%;
   padding: 16px 8px;
+}
+
+.layout-aside.collapsed .sidebar-menu {
+  padding: 56px 6px 10px;
+}
+
+.aside-toggle {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: transform 0.2s ease;
+}
+
+.aside-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.aside-toggle:active {
+  transform: translateY(0);
+}
+
+.win-tiles {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 3px;
+  transition: transform 0.25s ease;
+}
+
+.tile {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffffff 0%, #e6f4ff 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.92);
+}
+
+.win-tiles.diamond {
+  transform: rotate(45deg) scale(1.02);
+  animation: win-diamond 320ms cubic-bezier(0.2, 1.1, 0.2, 1) both;
+}
+
+/* 正方形 -> 菱形：四个小方块先散开/回弹，再合拢旋转 */
+.win-tiles.diamond .tile {
+  animation: tile-burst 320ms cubic-bezier(0.2, 1.1, 0.2, 1) both;
+}
+
+.win-tiles.diamond .t1 {
+  --dx: -5px;
+  --dy: -5px;
+}
+.win-tiles.diamond .t2 {
+  --dx: 5px;
+  --dy: -5px;
+}
+.win-tiles.diamond .t3 {
+  --dx: -5px;
+  --dy: 5px;
+}
+.win-tiles.diamond .t4 {
+  --dx: 5px;
+  --dy: 5px;
+}
+
+@keyframes tile-burst {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  35% {
+    transform: translate(var(--dx), var(--dy)) scale(0.94);
+  }
+  70% {
+    transform: translate(calc(var(--dx) * 0.45), calc(var(--dy) * 0.45)) scale(1.08);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes win-diamond {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  55% {
+    transform: rotate(0deg) scale(1.06);
+  }
+  100% {
+    transform: rotate(45deg) scale(1.02);
+  }
+}
+
+.win-tiles.square-back {
+  animation: win-square 320ms cubic-bezier(0.2, 1.1, 0.2, 1) both;
+}
+
+.win-tiles.square-back .tile {
+  animation: tile-burst-back 320ms cubic-bezier(0.2, 1.1, 0.2, 1) both;
+}
+
+@keyframes tile-burst-back {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  35% {
+    transform: translate(calc(var(--dx) * -0.2), calc(var(--dy) * -0.2)) scale(0.94);
+  }
+  70% {
+    transform: translate(calc(var(--dx) * 0.25), calc(var(--dy) * 0.25)) scale(1.08);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes win-square {
+  0% {
+    transform: rotate(45deg) scale(1.02);
+  }
+  55% {
+    transform: rotate(45deg) scale(1.06);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+.layout-aside.collapsed :deep(.el-menu-item .el-icon) {
+  animation: icon-pop 420ms cubic-bezier(0.2, 1.1, 0.2, 1) both;
+}
+
+.layout-aside.collapsed :deep(.el-menu-item:nth-child(1) .el-icon) {
+  animation-delay: 40ms;
+}
+.layout-aside.collapsed :deep(.el-menu-item:nth-child(2) .el-icon) {
+  animation-delay: 110ms;
+}
+.layout-aside.collapsed :deep(.el-menu-item:nth-child(3) .el-icon) {
+  animation-delay: 180ms;
+}
+.layout-aside.collapsed :deep(.el-menu-item:nth-child(4) .el-icon) {
+  animation-delay: 250ms;
+}
+.layout-aside.collapsed :deep(.el-menu-item:nth-child(5) .el-icon) {
+  animation-delay: 320ms;
+}
+.layout-aside.collapsed :deep(.el-menu-item:nth-child(6) .el-icon) {
+  animation-delay: 390ms;
+}
+.layout-aside.collapsed :deep(.el-menu-item:nth-child(7) .el-icon) {
+  animation-delay: 460ms;
+}
+
+@keyframes icon-pop {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px) scale(0.6);
+    filter: blur(1px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(0) scale(1.08);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
 
 .layout-main {

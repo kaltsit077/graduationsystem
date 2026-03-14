@@ -77,7 +77,12 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="applyDialog.visible" title="申请成为该导师学员" width="720px" class="mentor-dialog">
+    <AppDialog
+      v-model="applyDialog.visible"
+      title="申请成为该导师学员"
+      width="720px"
+      :close-on-click-modal="false"
+    >
       <div class="mentor-dialog-body" v-if="applyDialog.teacher">
         <div class="mentor-summary">
           <div class="mentor-name-row">
@@ -127,13 +132,14 @@
           </el-button>
         </span>
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import AppDialog from '@/components/AppDialog.vue'
 import {
   getTeacherOverviewList,
   createMentorApplication,
@@ -269,9 +275,6 @@ onMounted(() => {
   color: #909399;
 }
 
-.mentor-dialog :deep(.el-dialog) {
-  border-radius: 14px;
-}
 
 .mentor-dialog-body {
   display: flex;

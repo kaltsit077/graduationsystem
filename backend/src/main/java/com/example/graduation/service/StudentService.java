@@ -4,12 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.graduation.entity.StudentProfile;
 import com.example.graduation.entity.User;
 import com.example.graduation.entity.UserTag;
+import com.example.graduation.dto.UserTagResponse;
 import com.example.graduation.mapper.StudentProfileMapper;
 import com.example.graduation.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -60,12 +63,7 @@ public class StudentService {
             }
             studentProfileMapper.updateById(profile);
         }
-        
-        // 自动生成标签
-        if (interestDesc != null || major != null) {
-            tagService.generateStudentTags(userId, interestDesc, major, profile.getTagMode());
-        }
-        
+
         return profile;
     }
     
@@ -92,6 +90,34 @@ public class StudentService {
     @Transactional
     public void updateTags(Long userId, List<UserTag> tags) {
         tagService.updateUserTags(userId, tags);
+    }
+
+    /**
+     * 交互式重生成标签：保留 pinnedTags，并排除 excludeTagNames。
+     * 注意：该接口不负责更新 StudentProfile，仅根据传入文本重算 user_tag。
+     */
+    @Transactional
+    public List<UserTag> regenerateTags(
+            Long userId,
+            String interestDesc,
+            String major,
+            String tagMode,
+            List<UserTagResponse> pinnedTags,
+            List<String> excludeTagNames,
+            Integer desiredTotal) {
+        List<UserTag> pinned = new ArrayList<>();
+        if (pinnedTags != null) {
+            for (UserTagResponse t : pinnedTags) {
+                if (t == null || t.getTagName() == null || t.getTagName().trim().isEmpty()) {
+                    continue;
+                }
+                UserTag tag = new UserTag();
+                tag.setTagName(t.getTagName().trim());
+                tag.setWeight(t.getWeight() == null ? new BigDecimal("0.90") : t.getWeight());
+                pinned.add(tag);
+            }
+        }
+        return tagService.regenerateStudentTags(userId, interestDesc, major, tagMode, pinned, excludeTagNames, desiredTotal);
     }
 }
 

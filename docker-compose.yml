@@ -11,6 +11,7 @@ services:
       MYSQL_USER: graduation_user
       MYSQL_PASSWORD: graduation_pass
       TZ: Asia/Shanghai
+
     ports:
       - "3306:3306"
     volumes:
@@ -47,6 +48,7 @@ services:
       DB_NAME: graduation_topic
       DB_USER: root
       DB_PASSWORD: root
+      AI_TAG_API_KEY: gg-gcli-Gh4SeqClPIdbIMw6XpKcsFxJRPQQ8SK5TVChjdoOAmE
       # JWT 配置
       JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
       JWT_EXPIRATION: 120

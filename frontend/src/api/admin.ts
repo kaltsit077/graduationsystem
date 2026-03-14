@@ -54,6 +54,11 @@ export const getMonitorLogs = (params: { level?: string; lines?: number }) => {
   return request.get<string[]>('/admin/monitor/logs', { params })
 }
 
+/** 手动清除监控日志文件内容 */
+export const clearMonitorLogs = () => {
+  return request.post<void>('/admin/monitor/logs/clear')
+}
+
 // 选题系统开放设置
 export interface SelectionSetting {
   enabled: boolean

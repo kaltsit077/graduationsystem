@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Comparator;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -75,7 +77,7 @@ public class TagService {
         }
         
         // 简单的标签提取逻辑（可以后续优化为更复杂的NLP处理）
-        List<UserTag> tags = extractTags(researchDirection, new BigDecimal("0.90"));
+        List<UserTag> tags = extractTags(researchDirection, new BigDecimal("0.90"), null, null);
         
         // 保存标签
         tags.forEach(tag -> {
@@ -126,12 +128,12 @@ public class TagService {
             });
 
             // 1.2 对专业文本本身再做一次抽取，捕捉词典未覆盖的细分方向
-            tags.addAll(extractTags(majorText, new BigDecimal("0.80")));
+            tags.addAll(extractTags(majorText, new BigDecimal("0.80"), null, null));
         }
 
         // 2）兴趣描述标签权重 0.90（优先体现学生主观兴趣）
         if (useInterest && interestDesc != null && !interestDesc.trim().isEmpty()) {
-            tags.addAll(extractTags(interestDesc.trim(), new BigDecimal("0.90")));
+            tags.addAll(extractTags(interestDesc.trim(), new BigDecimal("0.90"), null, null));
         }
         
         // 去重并合并权重
@@ -145,23 +147,145 @@ public class TagService {
         
         return mergedTags;
     }
+
+    /**
+     * 交互式“重抽标签”：保留 pinnedTags，并让新生成的标签不要重复 excludeTagNames（固定的除外）。
+     * desiredTotal 为“总标签数（含固定）”目标，默认 5。
+     */
+    @Transactional
+    public List<UserTag> regenerateStudentTags(
+            Long userId,
+            String interestDesc,
+            String major,
+            String tagMode,
+            List<UserTag> pinnedTags,
+            List<String> excludeTagNames,
+            Integer desiredTotal) {
+        userTagMapper.delete(new LambdaQueryWrapper<UserTag>().eq(UserTag::getUserId, userId));
+
+        int total = (desiredTotal == null || desiredTotal <= 0) ? 5 : desiredTotal;
+        List<UserTag> pinned = pinnedTags == null ? new ArrayList<>() : pinnedTags.stream()
+                .filter(Objects::nonNull)
+                .filter(t -> t.getTagName() != null && !t.getTagName().trim().isEmpty())
+                .map(t -> {
+                    UserTag x = new UserTag();
+                    x.setTagName(t.getTagName().trim());
+                    x.setWeight(t.getWeight());
+                    return x;
+                })
+                .collect(Collectors.toList());
+
+        // 构建排除集合（小写），但固定标签永远允许
+        Set<String> pinnedLower = pinned.stream()
+                .map(UserTag::getTagName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(String::toLowerCase)
+                .collect(Collectors.toSet());
+        Set<String> excludeLower = new HashSet<>();
+        if (excludeTagNames != null) {
+            for (String s : excludeTagNames) {
+                if (s == null) continue;
+                String t = s.trim();
+                if (t.isEmpty()) continue;
+                String low = t.toLowerCase();
+                if (!pinnedLower.contains(low)) {
+                    excludeLower.add(low);
+                }
+            }
+        }
+
+        List<UserTag> generated = new ArrayList<>();
+        String mode = (tagMode == null || tagMode.trim().isEmpty())
+                ? "BOTH"
+                : tagMode.trim().toUpperCase();
+        boolean useMajor = "MAJOR".equals(mode) || "BOTH".equals(mode);
+        boolean useInterest = "INTEREST".equals(mode) || "BOTH".equals(mode);
+
+        // 只重抽未固定部分：目标数量 = total - pinned
+        int remaining = Math.max(0, total - pinned.size());
+
+        // 优先抽取兴趣（更符合“roll”的直觉），其次专业文本
+        if (remaining > 0 && useInterest && interestDesc != null && !interestDesc.trim().isEmpty()) {
+            generated.addAll(extractTags(interestDesc.trim(), new BigDecimal("0.90"), excludeLower, remaining));
+            remaining = Math.max(0, remaining - generated.size());
+        }
+        if (remaining > 0 && useMajor && major != null && !major.trim().isEmpty()) {
+            generated.addAll(extractTags(major.trim(), new BigDecimal("0.80"), excludeLower, remaining));
+            remaining = Math.max(0, remaining - generated.size());
+        }
+
+        // 若模型/规则返回数量不足，补齐到“选中数量”（remaining）
+        // 策略：最多补齐 3 轮，每轮用更综合的文本再抽一次，并把已生成的也加入排除，避免重复。
+        if (remaining > 0) {
+            String combinedText = "";
+            if (useInterest && interestDesc != null && !interestDesc.trim().isEmpty()) {
+                combinedText += interestDesc.trim();
+            }
+            if (useMajor && major != null && !major.trim().isEmpty()) {
+                if (!combinedText.isEmpty()) {
+                    combinedText += "；";
+                }
+                combinedText += major.trim();
+            }
+
+            int attempts = 0;
+            while (remaining > 0 && attempts < 3 && combinedText != null && !combinedText.isBlank()) {
+                // 将已生成标签加入排除集合，保证“只重生成几个就生成几个且不重复”
+                for (UserTag t : generated) {
+                    if (t == null || t.getTagName() == null) continue;
+                    String low = t.getTagName().trim().toLowerCase();
+                    if (!low.isEmpty() && !pinnedLower.contains(low)) {
+                        excludeLower.add(low);
+                    }
+                }
+
+                generated.addAll(extractTags(combinedText, new BigDecimal("0.90"), excludeLower, remaining));
+                remaining = Math.max(0, total - pinned.size() - mergeTags(generated).size());
+                attempts++;
+            }
+        }
+
+        List<UserTag> all = new ArrayList<>();
+        all.addAll(pinned);
+        all.addAll(generated);
+
+        List<UserTag> merged = mergeTags(all);
+        merged.forEach(tag -> {
+            tag.setUserId(userId);
+            userTagMapper.insert(tag);
+        });
+        return merged;
+    }
     
     /**
      * 从文本中提取标签。
      * 若已配置并启用 AI 标签抽取（ai.tag.enabled），优先使用大模型抽取；
      * 失败或未配置时使用“带停用词过滤与频次加权”的规则分词。
      */
-    private List<UserTag> extractTags(String text, BigDecimal defaultWeight) {
+    private List<UserTag> extractTags(String text, BigDecimal defaultWeight, Set<String> excludeLower, Integer maxCount) {
         // 优先使用 AI 抽取（若启用且返回非空）
         if (aiTagService != null) {
-            List<String> aiNames = aiTagService.extractTagNames(text);
+            List<String> aiNames = (excludeLower == null && (maxCount == null || maxCount <= 0))
+                    ? aiTagService.extractTagNames(text)
+                    : aiTagService.extractTagNames(text, maxCount == null ? 0 : maxCount, excludeLower == null ? null : excludeLower);
             if (!aiNames.isEmpty()) {
                 List<UserTag> tags = new ArrayList<>();
                 for (String name : aiNames) {
+                    if (name == null || name.isBlank()) {
+                        continue;
+                    }
+                    if (excludeLower != null && excludeLower.contains(name.trim().toLowerCase())) {
+                        continue;
+                    }
                     UserTag tag = new UserTag();
                     tag.setTagName(name);
                     tag.setWeight(defaultWeight);
                     tags.add(tag);
+                }
+                if (maxCount != null && maxCount > 0 && tags.size() > maxCount) {
+                    return tags.subList(0, maxCount);
                 }
                 return tags;
             }
@@ -185,6 +309,9 @@ public class TagService {
             if (STOP_WORDS.contains(lower)) {
                 continue;
             }
+            if (excludeLower != null && excludeLower.contains(lower)) {
+                continue;
+            }
             Integer old = freqMap.get(keyword);
             if (old == null) {
                 freqMap.put(keyword, 1);
@@ -193,8 +320,15 @@ public class TagService {
             }
         }
 
+        List<Map.Entry<String, Integer>> entries = new ArrayList<>(freqMap.entrySet());
+        entries.sort(Comparator.<Map.Entry<String, Integer>>comparingInt(Map.Entry::getValue).reversed()
+                .thenComparing(e -> e.getKey().length()));
+
         List<UserTag> tags = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : freqMap.entrySet()) {
+        for (Map.Entry<String, Integer> entry : entries) {
+            if (maxCount != null && maxCount > 0 && tags.size() >= maxCount) {
+                break;
+            }
             String keyword = entry.getKey();
             int freq = entry.getValue();
 

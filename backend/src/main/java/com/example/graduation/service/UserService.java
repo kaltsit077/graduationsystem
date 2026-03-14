@@ -76,6 +76,28 @@ public class UserService {
     }
 
     /**
+     * 学生/教师修改自己的密码（需要校验原密码）
+     */
+    @Transactional
+    public void changeOwnPassword(Long userId, String oldPassword, String newPassword) {
+        if (oldPassword == null || oldPassword.trim().isEmpty()) {
+            throw new RuntimeException("原密码不能为空");
+        }
+        if (newPassword == null || newPassword.trim().isEmpty()) {
+            throw new RuntimeException("新密码不能为空");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+            throw new RuntimeException("原密码不正确");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword.trim()));
+        userMapper.updateById(user);
+    }
+
+    /**
      * 管理员批量重置密码为默认密码 123456
      */
     @Transactional

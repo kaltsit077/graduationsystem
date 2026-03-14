@@ -85,6 +85,28 @@ public class TopicService {
         
         return topic;
     }
+
+    /**
+     * 删除选题（导师端）
+     */
+    @Transactional
+    public void deleteTopic(Long topicId, Long currentTeacherId) {
+        Topic existing = topicMapper.selectById(topicId);
+        if (existing == null) {
+            throw new RuntimeException("选题不存在");
+        }
+        if (currentTeacherId != null && !currentTeacherId.equals(existing.getTeacherId())) {
+            throw new RuntimeException("无权删除他人的选题");
+        }
+        // 仅允许删除草稿或已驳回的选题，避免影响已开放/已关闭记录
+        if (existing.getStatus() != Topic.TopicStatus.DRAFT
+                && existing.getStatus() != Topic.TopicStatus.REJECTED) {
+            throw new RuntimeException("当前状态不允许删除选题");
+        }
+
+        topicTagMapper.delete(new LambdaQueryWrapper<TopicTag>().eq(TopicTag::getTopicId, topicId));
+        topicMapper.deleteById(topicId);
+    }
     
     /**
      * 保存选题标签

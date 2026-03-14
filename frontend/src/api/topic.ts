@@ -34,6 +34,15 @@ export interface TopicDuplicateCheckResponse {
   similarTopicTitle?: string
 }
 
+export interface AiGeneratedTopic {
+  title: string
+  description?: string
+  tags?: string[]
+  maxSimilarity?: number
+  similarTopicTitle?: string
+  passed: boolean
+}
+
 // 获取已开放的选题列表（学生端）
 export const getOpenTopics = () => {
   return request.get<Topic[]>('/topics/open')
@@ -67,5 +76,28 @@ export const checkTopicDuplicate = (data: TopicDuplicateCheckRequest) => {
 // 提交选题审核
 export const submitTopicForReview = (id: number) => {
   return request.post(`/topics/${id}/submit-review`)
+}
+
+// 删除选题（仅草稿/已驳回）
+export const deleteTopic = (id: number) => {
+  return request.delete(`/topics/${id}`)
+}
+
+/** 导师 AI 选题生成请求：多维度选题需求均为可选，信息越完整生成越贴近需求 */
+export interface AiGenerateTopicsParams {
+  count?: number
+  tagNames?: string[]
+  /** 未填写下方五类时作为整体选题需求说明 */
+  preferenceHint?: string
+  backgroundHint?: string
+  contentHint?: string
+  abilityHint?: string
+  dataHint?: string
+  innovationHint?: string
+}
+
+// 基于导师标签的 AI 选题生成（可能调用外部大模型，延迟较高，单独拉长超时时间）
+export const generateAiTopics = (data: AiGenerateTopicsParams) => {
+  return request.post<AiGeneratedTopic[]>('/topics/ai-generate', data, { timeout: 120000 })
 }
 

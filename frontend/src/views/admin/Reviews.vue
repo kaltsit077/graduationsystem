@@ -23,7 +23,12 @@
     </el-card>
 
     <!-- 审核对话框 -->
-    <el-dialog v-model="reviewDialogVisible" title="选题审核" width="500px">
+    <AppDialog
+      v-model="reviewDialogVisible"
+      title="选题审核"
+      width="500px"
+      :close-on-click-modal="false"
+    >
       <el-form :model="reviewForm" label-width="100px">
         <el-form-item label="审核结果">
           <el-radio-group v-model="reviewForm.result">
@@ -44,13 +49,14 @@
         <el-button @click="reviewDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitReview" :loading="reviewing">确定</el-button>
       </template>
-    </el-dialog>
+    </AppDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import AppDialog from '@/components/AppDialog.vue'
 import request from '@/api/request'
 import type { Topic } from '@/api/topic'
 

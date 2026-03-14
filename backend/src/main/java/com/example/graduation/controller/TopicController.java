@@ -2,6 +2,8 @@ package com.example.graduation.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.graduation.common.ApiResponse;
+import com.example.graduation.dto.AiGenerateTopicsRequest;
+import com.example.graduation.dto.AiGeneratedTopicResponse;
 import com.example.graduation.dto.TopicDuplicateCheckRequest;
 import com.example.graduation.dto.TopicDuplicateCheckResponse;
 import com.example.graduation.dto.TopicRequest;
@@ -12,6 +14,7 @@ import com.example.graduation.entity.User;
 import com.example.graduation.mapper.TopicMapper;
 import com.example.graduation.mapper.TopicTagMapper;
 import com.example.graduation.mapper.UserMapper;
+import com.example.graduation.service.AiTopicService;
 import com.example.graduation.service.TopicService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -36,6 +39,9 @@ public class TopicController {
     
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired(required = false)
+    private AiTopicService aiTopicService;
     
     /**
      * 获取当前用户ID
@@ -167,6 +173,50 @@ public class TopicController {
     public ApiResponse<Void> submitForReview(@PathVariable Long id) {
         topicService.submitForReview(id);
         return ApiResponse.success(null);
+    }
+
+    /**
+     * 删除选题（导师端，仅草稿/已驳回）
+     */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> deleteTopic(@PathVariable Long id, HttpServletRequest request) {
+        Long teacherId = getCurrentUserId(request);
+        topicService.deleteTopic(id, teacherId);
+        return ApiResponse.success(null);
+    }
+
+    /**
+     * 导师基于自身标签进行 AI 选题生成。
+     * 系统会先根据导师画像生成若干候选题目，然后对每个候选题执行一次
+     * “标签 + 文本相似度”综合去重检测，仅返回通过阈值的候选题给前端。
+     */
+    @PostMapping("/ai-generate")
+    public ApiResponse<List<AiGeneratedTopicResponse>> generateAiTopics(
+            @RequestBody(required = false) AiGenerateTopicsRequest requestDto,
+            HttpServletRequest request) {
+        if (aiTopicService == null) {
+            return ApiResponse.error("AI 选题生成功能未启用");
+        }
+
+        Long teacherId = getCurrentUserId(request);
+        if (requestDto == null) {
+            requestDto = new AiGenerateTopicsRequest();
+            requestDto.setCount(5);
+        }
+        List<AiTopicService.CandidateTopic> candidates = aiTopicService.generateTopicsForTeacher(teacherId, requestDto);
+        List<AiGeneratedTopicResponse> responses = candidates.stream().map(c -> {
+            TopicService.DuplicateCheckResult check = topicService.checkDuplicate(null, c.getTitle(), c.getDescription());
+            AiGeneratedTopicResponse dto = new AiGeneratedTopicResponse();
+            dto.setTitle(c.getTitle());
+            dto.setDescription(c.getDescription());
+            dto.setTags(c.getTags());
+            dto.setMaxSimilarity(check.getMaxSimilarity());
+            dto.setSimilarTopicTitle(check.getSimilarTopicTitle());
+            dto.setPassed(check.isPassed());
+            return dto;
+        }).filter(AiGeneratedTopicResponse::isPassed).collect(Collectors.toList());
+
+        return ApiResponse.success(responses);
     }
     
     /**

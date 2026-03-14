@@ -40,24 +40,30 @@ jwt:
   secret: "QxuhaiYhazhkrYbbJQwhvJd06GVWAq09YCC7NceNjsM2GDciiM30tClcrS2pD3+nDV2cIrQIVK0qnFJLqbCIRw=="
   expiration-minutes: 120
 
-# 默认管理员账号配置（已禁用自动创建，如需初始化请手工插入数据库）
+# 默认管理员账号配置
+# - 若管理员登录报错“用户名或密码错误”，请确认数据库中已有 ADMIN 用户，或将 auto-create 改为 true 后重启后端以自动创建
 admin:
   username: admin
   password: 123456
-  real-name: 系统管理员
+  real-name: 胡先生
   auto-create: false
 
-# AI 标签抽取（可选）：从研究方向/兴趣描述中自动抽取关键词作为用户标签
-# 未配置或 enabled=false 时仍使用原有的按逗号/空格分词逻辑
+# AI 标签抽取部分：从研究方向/兴趣描述中自动抽取关键词作为用户标签
+#  enabled=false 时仍使用原有的按逗号/空格分词逻辑
 ai:
   tag:
     enabled: true
     api-url: https://gcli.ggchan.dev/v1/chat/completions
-    api-key: ${AI_TAG_API_KEY:}
-    model: gemini-2.5-flash
+    api-key: gg-gcli-Gh4SeqClPIdbIMw6XpKcsFxJRPQQ8SK5TVChjdoOAmE
+    model: gemini-2.5-pro
     timeout-ms: 10000
 
 # 语义向量服务（本地 sentence-transformers / bge）
 embedding:
   enabled: true
   base-url: http://localhost:8000
+
+# 监控日志：定期清除（0=关闭，大于 0 表示每隔 N 小时清空一次日志文件）
+monitor:
+  log:
+    clear-interval-hours: 0
