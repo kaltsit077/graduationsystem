@@ -66,4 +66,4 @@ embedding:
 # 监控日志：定期清除（0=关闭，大于 0 表示每隔 N 小时清空一次日志文件）
 monitor:
   log:
-    clear-interval-hours: 0
+    clear-interval-hours: 1

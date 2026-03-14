@@ -205,46 +205,14 @@ public class TagService {
 
         // 只重抽未固定部分：目标数量 = total - pinned
         int remaining = Math.max(0, total - pinned.size());
-
-        // 优先抽取兴趣（更符合“roll”的直觉），其次专业文本
-        if (remaining > 0 && useInterest && interestDesc != null && !interestDesc.trim().isEmpty()) {
-            generated.addAll(extractTags(interestDesc.trim(), new BigDecimal("0.90"), excludeLower, remaining));
-            remaining = Math.max(0, remaining - generated.size());
-        }
-        if (remaining > 0 && useMajor && major != null && !major.trim().isEmpty()) {
-            generated.addAll(extractTags(major.trim(), new BigDecimal("0.80"), excludeLower, remaining));
-            remaining = Math.max(0, remaining - generated.size());
-        }
-
-        // 若模型/规则返回数量不足，补齐到“选中数量”（remaining）
-        // 策略：最多补齐 3 轮，每轮用更综合的文本再抽一次，并把已生成的也加入排除，避免重复。
         if (remaining > 0) {
-            String combinedText = "";
-            if (useInterest && interestDesc != null && !interestDesc.trim().isEmpty()) {
-                combinedText += interestDesc.trim();
-            }
-            if (useMajor && major != null && !major.trim().isEmpty()) {
-                if (!combinedText.isEmpty()) {
-                    combinedText += "；";
-                }
-                combinedText += major.trim();
+            String combinedText = buildCombinedText(useInterest ? interestDesc : null, useMajor ? major : null);
+            if (combinedText == null || combinedText.isBlank()) {
+                throw new IllegalArgumentException("用于生成标签的文本为空，请先填写兴趣描述/专业（或研究方向）");
             }
 
-            int attempts = 0;
-            while (remaining > 0 && attempts < 3 && combinedText != null && !combinedText.isBlank()) {
-                // 将已生成标签加入排除集合，保证“只重生成几个就生成几个且不重复”
-                for (UserTag t : generated) {
-                    if (t == null || t.getTagName() == null) continue;
-                    String low = t.getTagName().trim().toLowerCase();
-                    if (!low.isEmpty() && !pinnedLower.contains(low)) {
-                        excludeLower.add(low);
-                    }
-                }
-
-                generated.addAll(extractTags(combinedText, new BigDecimal("0.90"), excludeLower, remaining));
-                remaining = Math.max(0, total - pinned.size() - mergeTags(generated).size());
-                attempts++;
-            }
+            BigDecimal weight = "MAJOR".equals(mode) ? new BigDecimal("0.80") : new BigDecimal("0.90");
+            generated.addAll(extractTagsAiOnly(combinedText, weight, excludeLower, remaining, 2));
         }
 
         List<UserTag> all = new ArrayList<>();
@@ -262,7 +230,7 @@ public class TagService {
     /**
      * 从文本中提取标签。
      * 若已配置并启用 AI 标签抽取（ai.tag.enabled），优先使用大模型抽取；
-     * 失败或未配置时使用“带停用词过滤与频次加权”的规则分词。
+     * 启用 AI 时不允许回退本地词库/规则分词（避免“看似成功但其实没用上 AI”）。
      */
     private List<UserTag> extractTags(String text, BigDecimal defaultWeight, Set<String> excludeLower, Integer maxCount) {
         // 优先使用 AI 抽取（若启用且返回非空）
@@ -270,25 +238,26 @@ public class TagService {
             List<String> aiNames = (excludeLower == null && (maxCount == null || maxCount <= 0))
                     ? aiTagService.extractTagNames(text)
                     : aiTagService.extractTagNames(text, maxCount == null ? 0 : maxCount, excludeLower == null ? null : excludeLower);
-            if (!aiNames.isEmpty()) {
-                List<UserTag> tags = new ArrayList<>();
-                for (String name : aiNames) {
-                    if (name == null || name.isBlank()) {
-                        continue;
-                    }
-                    if (excludeLower != null && excludeLower.contains(name.trim().toLowerCase())) {
-                        continue;
-                    }
-                    UserTag tag = new UserTag();
-                    tag.setTagName(name);
-                    tag.setWeight(defaultWeight);
-                    tags.add(tag);
-                }
-                if (maxCount != null && maxCount > 0 && tags.size() > maxCount) {
-                    return tags.subList(0, maxCount);
-                }
-                return tags;
+            if (aiNames.isEmpty()) {
+                throw new RuntimeException("AI 标签生成失败：模型未返回有效标签（请检查 AI 网关、Key、网络与模型名）");
             }
+            List<UserTag> tags = new ArrayList<>();
+            for (String name : aiNames) {
+                if (name == null || name.isBlank()) {
+                    continue;
+                }
+                if (excludeLower != null && excludeLower.contains(name.trim().toLowerCase())) {
+                    continue;
+                }
+                UserTag tag = new UserTag();
+                tag.setTagName(name);
+                tag.setWeight(defaultWeight);
+                tags.add(tag);
+            }
+            if (maxCount != null && maxCount > 0 && tags.size() > maxCount) {
+                return tags.subList(0, maxCount);
+            }
+            return tags;
         }
 
         // 回退：按逗号/顿号/空格分词，并结合停用词过滤与频次统计
@@ -349,6 +318,62 @@ public class TagService {
         }
 
         return tags;
+    }
+
+    private String buildCombinedText(String interestDesc, String major) {
+        String combinedText = "";
+        if (interestDesc != null && !interestDesc.trim().isEmpty()) {
+            combinedText += interestDesc.trim();
+        }
+        if (major != null && !major.trim().isEmpty()) {
+            if (!combinedText.isEmpty()) {
+                combinedText += "；";
+            }
+            combinedText += major.trim();
+        }
+        return combinedText;
+    }
+
+    /**
+     * AI-only 抽取：最多尝试 maxAttempts 次（满足“单次改为 1-2 次”）。
+     * 失败将直接抛错，禁止回退本地词库/规则。
+     */
+    private List<UserTag> extractTagsAiOnly(String text, BigDecimal defaultWeight, Set<String> excludeLower, int maxCount, int maxAttempts) {
+        if (aiTagService == null) {
+            throw new IllegalStateException("AI 标签服务未启用或未正确配置（ai.tag.enabled/api-url/api-key）");
+        }
+        int attempts = 0;
+        RuntimeException last = null;
+        while (attempts < Math.max(1, maxAttempts)) {
+            attempts++;
+            try {
+                List<String> aiNames = aiTagService.extractTagNames(text, maxCount, excludeLower == null ? null : excludeLower);
+                if (aiNames == null || aiNames.isEmpty()) {
+                    last = new RuntimeException("AI 标签生成失败：模型未返回有效标签");
+                    continue;
+                }
+                List<UserTag> tags = new ArrayList<>();
+                for (String name : aiNames) {
+                    if (name == null || name.isBlank()) continue;
+                    if (excludeLower != null && excludeLower.contains(name.trim().toLowerCase())) continue;
+                    UserTag tag = new UserTag();
+                    tag.setTagName(name.trim());
+                    tag.setWeight(defaultWeight);
+                    tags.add(tag);
+                }
+                if (tags.isEmpty()) {
+                    last = new RuntimeException("AI 标签生成失败：返回的标签全部被排除或无效");
+                    continue;
+                }
+                if (tags.size() > maxCount) {
+                    return tags.subList(0, maxCount);
+                }
+                return tags;
+            } catch (RuntimeException e) {
+                last = e;
+            }
+        }
+        throw last == null ? new RuntimeException("AI 标签生成失败") : last;
     }
     
     /**

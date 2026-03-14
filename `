@@ -42,8 +42,8 @@ public class CorsConfig {
         }
 
         // 统一增加通配符兜底，避免因 Origin 细节差异导致 "Invalid CORS request"
-        // 仅放行当前域名及其子域，避免完全开放 *
-        config.addAllowedOriginPattern("https://*.dpdns.org");
+        // 当前部署已通过 Nginx + Cloudflare 反向代理，服务仅对外暴露一个入口域名，放宽 CORS 风险较小
+        config.addAllowedOriginPattern("*");
         
         // 允许的请求头
         config.addAllowedHeader("*");

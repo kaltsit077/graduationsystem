@@ -2,7 +2,7 @@
 # 使用方式：java -jar -Dspring.profiles.active=prod app.jar
 
 server:
-  port: 9091
+  port: 9090
   # 允许内网访问（如果需要外网，通过 Nginx 反代，不建议直接暴露 8080）
   address: 0.0.0.0
   # 请求体大小限制（用于文件上传）

@@ -38,6 +38,11 @@ FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
+# 使用国内镜像并安装 wget（直接覆盖源，避免 dl-cdn TLS 超时）
+RUN echo "http://mirrors.aliyun.com/alpine/v3.19/main" > /etc/apk/repositories \
+    && echo "http://mirrors.aliyun.com/alpine/v3.19/community" >> /etc/apk/repositories \
+    && apk add --no-cache wget
+
 # 创建日志目录
 RUN mkdir -p /app/logs
 

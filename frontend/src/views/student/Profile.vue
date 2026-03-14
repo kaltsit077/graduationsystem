@@ -42,13 +42,6 @@
             placeholder="请描述您的兴趣爱好和研究方向"
           />
         </el-form-item>
-      <el-form-item label="标签生成模式">
-        <el-radio-group v-model="form.tagMode">
-          <el-radio label="BOTH">综合（专业 + 兴趣）</el-radio>
-          <el-radio label="MAJOR">仅根据专业生成</el-radio>
-          <el-radio label="INTEREST">仅根据兴趣生成</el-radio>
-        </el-radio-group>
-      </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="onSaveProfileClick" :loading="saving">
             {{ saveSuccess ? '已保存 ✓' : '保存' }}
@@ -61,7 +54,13 @@
       <template #header>
         <div class="card-header">
           <span>我的标签</span>
-          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end">
+            <el-radio-group v-model="form.tagMode" size="small">
+              <el-radio-button label="BOTH">综合</el-radio-button>
+              <el-radio-button label="MAJOR">仅专业</el-radio-button>
+              <el-radio-button label="INTEREST">仅兴趣</el-radio-button>
+            </el-radio-group>
+
             <el-button
               type="primary"
               size="small"

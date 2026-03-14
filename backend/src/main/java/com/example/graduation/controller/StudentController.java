@@ -5,12 +5,15 @@ import com.example.graduation.dto.ChangePasswordRequest;
 import com.example.graduation.dto.StudentProfileRequest;
 import com.example.graduation.dto.StudentProfileResponse;
 import com.example.graduation.dto.TagRegenerateRequest;
+import com.example.graduation.dto.TagRegenerateTaskCreateResponse;
+import com.example.graduation.dto.TagRegenerateTaskStatusResponse;
 import com.example.graduation.dto.UserTagResponse;
 import com.example.graduation.entity.StudentProfile;
 import com.example.graduation.entity.User;
 import com.example.graduation.entity.UserTag;
 import com.example.graduation.mapper.UserMapper;
 import com.example.graduation.service.StudentService;
+import com.example.graduation.service.TagRegenerateTaskService;
 import com.example.graduation.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -34,6 +37,9 @@ public class StudentController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private TagRegenerateTaskService tagRegenerateTaskService;
     
     /**
      * 获取当前用户ID
@@ -187,29 +193,29 @@ public class StudentController {
      * 交互式“重抽标签”：保留 pinnedTags，并让模型不要重复生成 excludeTagNames（固定的除外）
      */
     @PostMapping("/tags/regenerate")
-    public ApiResponse<List<UserTagResponse>> regenerateTags(
+    public ApiResponse<TagRegenerateTaskCreateResponse> regenerateTags(
             @RequestBody TagRegenerateRequest dto,
             HttpServletRequest request) {
         Long userId = getCurrentUserId(request);
 
-        List<UserTag> tags = studentService.regenerateTags(
-                userId,
-                dto.getInterestDesc(),
-                dto.getMajor(),
-                dto.getTagMode(),
-                dto.getPinnedTags(),
-                dto.getExcludeTagNames(),
-                dto.getDesiredTotal()
+        String taskId = tagRegenerateTaskService.submit("student:" + userId, () ->
+                studentService.regenerateTags(
+                        userId,
+                        dto.getInterestDesc(),
+                        dto.getMajor(),
+                        dto.getTagMode(),
+                        dto.getPinnedTags(),
+                        dto.getExcludeTagNames(),
+                        dto.getDesiredTotal()
+                )
         );
 
-        List<UserTagResponse> responses = tags.stream().map(tag -> {
-            UserTagResponse response = new UserTagResponse();
-            response.setTagName(tag.getTagName());
-            response.setWeight(tag.getWeight());
-            return response;
-        }).collect(Collectors.toList());
+        return ApiResponse.success(new TagRegenerateTaskCreateResponse(taskId));
+    }
 
-        return ApiResponse.success(responses);
+    @GetMapping("/tags/regenerate/{taskId}")
+    public ApiResponse<TagRegenerateTaskStatusResponse> getRegenerateStatus(@PathVariable String taskId) {
+        return ApiResponse.success(tagRegenerateTaskService.getStatus(taskId));
     }
 }
 

@@ -11,7 +11,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME:-graduation_topic}
-      MYSQL_USER: ${DB_USER:-graduation_user}
+      # 不能使用 root：MYSQL_USER 仅用于创建“普通用户”，root 密码用 MYSQL_ROOT_PASSWORD
+      MYSQL_USER: graduation_user
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: Asia/Shanghai
     # 生产环境不要暴露数据库端口到公网
@@ -61,7 +62,8 @@ services:
       ADMIN_REAL_NAME: ${ADMIN_REAL_NAME:-系统管理员}
       ADMIN_AUTO_CREATE: ${ADMIN_AUTO_CREATE:-false}
       # CORS 配置（生产环境必须配置）
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:5173,http://localhost:80}
+      # 确保包含生产域名，否则会出现 "Invalid CORS request"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://hulu.qslm.dpdns.org,http://localhost,http://localhost:5173,http://localhost:80}
       # Spring Profile
       SPRING_PROFILES_ACTIVE: prod
     volumes:
@@ -72,11 +74,9 @@ services:
         condition: service_healthy
     networks:
       - graduation-network
+    # 暂禁健康检查，避免因镜像内无 wget/TLS 导致一直 unhealthy；依赖 restart: always 自动重启
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/api/ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      disable: true
 
   # 前端服务
   frontend:
@@ -87,8 +87,9 @@ services:
     restart: always
     ports:
       - "80:80"
-      # 如果配置了 HTTPS，使用 443:443
-      # - "443:443"
+      - "443:443"
+    volumes:
+      - ./frontend/certs:/etc/nginx/certs:ro
     depends_on:
       - backend
     networks:

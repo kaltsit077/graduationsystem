@@ -3,6 +3,8 @@ package com.example.graduation.controller;
 import com.example.graduation.common.ApiResponse;
 import com.example.graduation.dto.ChangePasswordRequest;
 import com.example.graduation.dto.TagRegenerateRequest;
+import com.example.graduation.dto.TagRegenerateTaskCreateResponse;
+import com.example.graduation.dto.TagRegenerateTaskStatusResponse;
 import com.example.graduation.dto.TeacherProfileRequest;
 import com.example.graduation.dto.TeacherProfileResponse;
 import com.example.graduation.dto.UserTagResponse;
@@ -10,6 +12,7 @@ import com.example.graduation.entity.TeacherProfile;
 import com.example.graduation.entity.User;
 import com.example.graduation.entity.UserTag;
 import com.example.graduation.mapper.UserMapper;
+import com.example.graduation.service.TagRegenerateTaskService;
 import com.example.graduation.service.TeacherService;
 import com.example.graduation.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,6 +35,9 @@ public class TeacherController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private TagRegenerateTaskService tagRegenerateTaskService;
     
     /**
      * 获取当前用户ID
@@ -171,27 +177,27 @@ public class TeacherController {
      * 对导师来说，文本来源是研究方向。
      */
     @PostMapping("/tags/regenerate")
-    public ApiResponse<List<UserTagResponse>> regenerateTags(
+    public ApiResponse<TagRegenerateTaskCreateResponse> regenerateTags(
             @RequestBody TagRegenerateRequest dto,
             HttpServletRequest request) {
         Long userId = getCurrentUserId(request);
 
-        List<UserTag> tags = teacherService.regenerateTags(
-                userId,
-                dto.getInterestDesc(), // 前端传入研究方向文本
-                dto.getPinnedTags(),
-                dto.getExcludeTagNames(),
-                dto.getDesiredTotal()
+        String taskId = tagRegenerateTaskService.submit("teacher:" + userId, () ->
+                teacherService.regenerateTags(
+                        userId,
+                        dto.getInterestDesc(), // 前端传入研究方向文本
+                        dto.getPinnedTags(),
+                        dto.getExcludeTagNames(),
+                        dto.getDesiredTotal()
+                )
         );
 
-        List<UserTagResponse> responses = tags.stream().map(tag -> {
-            UserTagResponse response = new UserTagResponse();
-            response.setTagName(tag.getTagName());
-            response.setWeight(tag.getWeight());
-            return response;
-        }).collect(Collectors.toList());
+        return ApiResponse.success(new TagRegenerateTaskCreateResponse(taskId));
+    }
 
-        return ApiResponse.success(responses);
+    @GetMapping("/tags/regenerate/{taskId}")
+    public ApiResponse<TagRegenerateTaskStatusResponse> getRegenerateStatus(@PathVariable String taskId) {
+        return ApiResponse.success(tagRegenerateTaskService.getStatus(taskId));
     }
 
     /**
