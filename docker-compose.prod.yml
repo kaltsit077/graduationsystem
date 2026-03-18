@@ -3,6 +3,36 @@
 # 注意: 部署前必须创建 .env 文件并配置所有敏感信息
 
 services:
+  embedding:
+    profiles: ["embedding"]  # 可选：仅在需要时启动，不强制依赖
+    build:
+      context: ./ai-embedding
+      dockerfile: Dockerfile
+    container_name: graduation-embedding
+    restart: always
+    # 生产环境不暴露端口（后端通过容器名访问）
+    # ports:
+    #   - "8000:8000"
+    environment:
+      # 模型路径（生产环境建议将模型文件挂载到服务器，避免每次构建镜像打包模型）
+      EMBEDDING_MODEL_PATH: /models/bge-m3
+      # 可选：添加日志级别等生产环境配置
+      LOG_LEVEL: INFO
+    volumes:
+      # 生产环境模型文件建议放在服务器的 /data/models 目录（需提前创建）
+      - /data/models/bge-m3:/models/bge-m3:ro
+      # 日志目录（可选）
+      - ./ai-embedding/logs:/app/logs
+    networks:
+      - graduation-network
+    # 可选：健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   # MySQL 数据库服务
   mysql:
     image: mysql:8.0
@@ -11,17 +41,11 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME:-graduation_topic}
-      # 不能使用 root：MYSQL_USER 仅用于创建“普通用户”，root 密码用 MYSQL_ROOT_PASSWORD
       MYSQL_USER: graduation_user
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: Asia/Shanghai
-    # 生产环境不要暴露数据库端口到公网
-    # ports:
-    #   - "3306:3306"
     volumes:
-      # 数据持久化
       - mysql_data:/var/lib/mysql
-      # 初始化脚本（生产环境仅保留建表脚本，数据初始化由运维或 SQL 工具单独控制）
       - ./backend/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     command: 
       - --character-set-server=utf8mb4
@@ -36,49 +60,48 @@ services:
       timeout: 5s
       retries: 5
 
-  # 后端服务
+  # 后端服务（修改：添加 embedding 相关环境变量）
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: graduation-backend
     restart: always
-    # 生产环境建议通过 Nginx 反向代理，不直接暴露端口
-    # ports:
-    #   - "9090:9090"
     environment:
-      # 数据库连接配置
+      # 原有数据库/JWT/管理员配置不变
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: ${DB_NAME:-graduation_topic}
       DB_USER: ${DB_USER:-root}
       DB_PASSWORD: ${DB_PASSWORD}
-      # JWT 配置
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-120}
-      # 管理员配置
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_REAL_NAME: ${ADMIN_REAL_NAME:-系统管理员}
       ADMIN_AUTO_CREATE: ${ADMIN_AUTO_CREATE:-false}
-      # CORS 配置（生产环境必须配置）
-      # 确保包含生产域名，否则会出现 "Invalid CORS request"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://hulu.qslm.dpdns.org,http://localhost,http://localhost:5173,http://localhost:80}
-      # Spring Profile
       SPRING_PROFILES_ACTIVE: prod
+      # ========== 新增 embedding 配置 ==========
+      # 生产环境通过容器名访问 embedding 服务（无需端口）
+      EMBEDDING_BASE_URL: http://embedding:8000
+      # 可选：添加开关，控制是否启用 embedding 功能
+      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
+      # ========== embedding 配置结束 ==========
     volumes:
-      # 日志目录
       - ./backend/logs:/app/logs
     depends_on:
       mysql:
         condition: service_healthy
+      # 可选：如果后端强依赖 embedding，添加下面的依赖
+      # embedding:
+      #   condition: service_healthy
     networks:
       - graduation-network
-    # 暂禁健康检查，避免因镜像内无 wget/TLS 导致一直 unhealthy；依赖 restart: always 自动重启
     healthcheck:
       disable: true
 
-  # 前端服务
+  # 前端服务（原有配置不变）
   frontend:
     build:
       context: ./frontend
@@ -94,13 +117,13 @@ services:
       - backend
     networks:
       - graduation-network
-    # 前端不需要环境变量（已构建到静态文件中）
 
+# 原有 volumes 不变
 volumes:
   mysql_data:
     driver: local
 
+# 原有 networks 不变
 networks:
   graduation-network:
     driver: bridge
-
