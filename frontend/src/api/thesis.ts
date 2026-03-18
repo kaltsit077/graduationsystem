@@ -26,6 +26,18 @@ export const uploadThesis = (data: ThesisUploadRequest) => {
   return request.post<Thesis>('/thesis/upload', data)
 }
 
+// 上传论文文件（服务器存储）
+export const uploadThesisFile = (topicId: number, file: File) => {
+  const form = new FormData()
+  form.append('topicId', String(topicId))
+  form.append('file', file)
+  return request.post<Thesis>('/thesis/upload-file', form, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
+
 // 获取我的论文列表
 export const getMyTheses = () => {
   return request.get<Thesis[]>('/thesis/my')

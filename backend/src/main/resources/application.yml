@@ -55,8 +55,8 @@ ai:
     enabled: true
     api-url: https://gcli.ggchan.dev/v1/chat/completions
     api-key: gg-gcli-Gh4SeqClPIdbIMw6XpKcsFxJRPQQ8SK5TVChjdoOAmE
-    model: gemini-2.5-pro
-    timeout-ms: 10000
+    model: gemini-2.5-flash
+    timeout-ms: 300000
 
 # 语义向量服务（本地 sentence-transformers / bge）
 embedding:
@@ -67,3 +67,7 @@ embedding:
 monitor:
   log:
     clear-interval-hours: 1
+
+# 文件上传：用于用户自定义背景图等静态资源
+app:
+  upload-dir: ./uploads

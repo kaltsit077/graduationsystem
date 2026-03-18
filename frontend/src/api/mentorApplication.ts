@@ -31,6 +31,8 @@ export interface TeacherOverview {
   avgScore?: number
   excellentRatio?: number
   failRatio?: number
+  /** 学生视角下的导师匹配度（0-1），仅学生端查询时返回 */
+  matchScore?: number
 }
 
 // 学生端：获取导师列表概览

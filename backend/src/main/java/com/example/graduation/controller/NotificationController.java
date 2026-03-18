@@ -81,7 +81,6 @@ public class NotificationController {
         User fromUser = userMapper.selectById(fromUserId);
         String senderName = fromUser != null ? fromUser.getRealName() : "系统";
         
-        String title = "来自 " + senderName + " 的消息";
         String type = "CHAT";
         
         Long realTargetUserId = targetUserId;
@@ -112,7 +111,19 @@ public class NotificationController {
             }
         }
         
-        notificationService.createNotification(realTargetUserId, type, title, content, relatedId);
+        // 1) 给接收方存一份（未读）
+        String toTitle = "来自 " + senderName + " 的消息";
+        notificationService.createNotification(realTargetUserId, type, toTitle, content, relatedId, 0);
+
+        // 2) 给发送方也存一份（已读），这样双方都能看到完整对话
+        String receiverName = "对方";
+        User toUser = userMapper.selectById(realTargetUserId);
+        if (toUser != null && toUser.getRealName() != null && !toUser.getRealName().isBlank()) {
+            receiverName = toUser.getRealName();
+        }
+        String fromTitle = "我 → " + receiverName;
+        notificationService.createNotification(fromUserId, type, fromTitle, content, relatedId, 1);
+
         return ApiResponse.success(null);
     }
     

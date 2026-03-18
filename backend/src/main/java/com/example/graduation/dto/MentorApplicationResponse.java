@@ -14,6 +14,12 @@ public class MentorApplicationResponse {
 
     private Long teacherId;
 
+    /** 学生姓名（导师端展示用） */
+    private String studentName;
+
+    /** 导师姓名（学生端展示用） */
+    private String teacherName;
+
     private MentorApplication.Status status;
 
     private String reason;

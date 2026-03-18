@@ -57,6 +57,7 @@ public class TagRegenerateTaskService {
                         : result.stream().map(t -> {
                             UserTagResponse r = new UserTagResponse();
                             r.setTagName(t.getTagName());
+                            r.setTagType(t.getTagType());
                             r.setWeight(t.getWeight());
                             return r;
                         }).collect(Collectors.toList());

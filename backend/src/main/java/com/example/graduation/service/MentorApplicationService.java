@@ -53,6 +53,9 @@ public class MentorApplicationService {
     @Autowired
     private TagService tagService;
 
+    @Autowired(required = false)
+    private EmbeddingService embeddingService;
+
     /**
      * 学生创建拜师申请
      */
@@ -190,9 +193,9 @@ public class MentorApplicationService {
     }
 
     /**
-     * 学生端导师列表概览
+     * 学生端导师列表概览：可选传入 currentStudentId，用于计算“学生-导师”匹配度并按匹配度排序。
      */
-    public List<TeacherOverviewResponse> getTeacherOverviewList() {
+    public List<TeacherOverviewResponse> getTeacherOverviewList(Long currentStudentId) {
         List<User> teachers = userMapper.selectList(
                 new LambdaQueryWrapper<User>()
                         .eq(User::getRole, User.Role.TEACHER)
@@ -252,6 +255,14 @@ public class MentorApplicationService {
         );
         Map<Long, List<TopicMetrics>> metricsByTeacher = metricsList.stream()
                 .collect(Collectors.groupingBy(TopicMetrics::getTeacherId));
+
+        // 当前学生标签（用于计算“学生-导师”匹配度）
+        // - 只要传入 currentStudentId，就会返回 matchScore（即使学生尚未生成标签，也返回 0.50 作为中性值）
+        List<UserTag> currentStudentTags = null;
+        boolean shouldReturnMatchScore = currentStudentId != null;
+        if (shouldReturnMatchScore) {
+            currentStudentTags = tagService.getUserTags(currentStudentId);
+        }
 
         List<TeacherOverviewResponse> result = new ArrayList<>();
         for (User teacher : teachers) {
@@ -336,10 +347,110 @@ public class MentorApplicationService {
                 }
             }
 
+            // 计算“当前学生 ↔ 导师画像”的匹配度（0-1），学生端固定返回该字段
+            if (shouldReturnMatchScore) {
+                BigDecimal match = calculateStudentTeacherMatchScore(currentStudentTags, profile, userTags);
+                resp.setMatchScore(match);
+            }
+
             result.add(resp);
         }
 
+        // 若存在匹配度，则按匹配度从高到低排序；否则保持原顺序
+        if (shouldReturnMatchScore) {
+            result.sort((a, b) -> {
+                BigDecimal ma = a.getMatchScore();
+                BigDecimal mb = b.getMatchScore();
+                if (ma == null && mb == null) return 0;
+                if (ma == null) return 1;
+                if (mb == null) return -1;
+                return mb.compareTo(ma);
+            });
+        }
+
         return result;
+    }
+
+    /**
+     * 基于学生标签文本与“导师研究方向 + 导师标签”计算 0-1 匹配度。
+     * 若向量服务不可用或文本缺失，返回 0.5 作为中性值。
+     */
+    private BigDecimal calculateStudentTeacherMatchScore(List<UserTag> studentTags,
+                                                         TeacherProfile profile,
+                                                         List<UserTag> teacherTags) {
+        if (studentTags == null || studentTags.isEmpty()) {
+            return new BigDecimal("0.50");
+        }
+        String studentText = studentTags.stream()
+                .filter(t -> t != null && t.getTagName() != null)
+                .map(UserTag::getTagName)
+                .collect(Collectors.joining("，"));
+
+        StringBuilder teacherSb = new StringBuilder();
+        if (profile != null && profile.getResearchDirection() != null) {
+            teacherSb.append(profile.getResearchDirection()).append(' ');
+        }
+        if (teacherTags != null && !teacherTags.isEmpty()) {
+            String tagText = teacherTags.stream()
+                    .filter(t -> t != null && t.getTagName() != null)
+                    .map(UserTag::getTagName)
+                    .collect(Collectors.joining("，"));
+            teacherSb.append(tagText);
+        }
+        String teacherText = teacherSb.toString().trim();
+        if (studentText.isEmpty() || teacherText.isEmpty()) {
+            return new BigDecimal("0.50");
+        }
+
+        // 1) 优先使用向量模型（若已配置且服务可用）
+        if (embeddingService != null) {
+            float[] vS = embeddingService.embedText(studentText);
+            float[] vT = embeddingService.embedText(teacherText);
+            if (vS != null && vT != null && vS.length > 0 && vS.length == vT.length) {
+                double dot = 0.0;
+                double normS = 0.0;
+                double normT = 0.0;
+                for (int i = 0; i < vS.length; i++) {
+                    float sv = vS[i];
+                    float tv = vT[i];
+                    dot += sv * tv;
+                    normS += sv * sv;
+                    normT += tv * tv;
+                }
+                if (dot != 0.0 && normS != 0.0 && normT != 0.0) {
+                    double cosine = dot / (Math.sqrt(normS) * Math.sqrt(normT));
+                    if (cosine < 0.0) cosine = 0.0;
+                    if (cosine > 1.0) cosine = 1.0;
+                    return new BigDecimal(cosine).setScale(4, java.math.RoundingMode.HALF_UP);
+                }
+            }
+        }
+
+        // 2) 回退：用标签权重重合度（不依赖外部服务），避免界面长期全是 0.50
+        String teacherLower = teacherText.toLowerCase();
+        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal matched = BigDecimal.ZERO;
+        for (UserTag t : studentTags) {
+            if (t == null || t.getTagName() == null || t.getWeight() == null) continue;
+            String name = t.getTagName().trim().toLowerCase();
+            if (name.isEmpty()) continue;
+            BigDecimal w = t.getWeight();
+            total = total.add(w);
+            if (teacherLower.contains(name)) {
+                matched = matched.add(w);
+            }
+        }
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            return new BigDecimal("0.50");
+        }
+        BigDecimal raw = matched.divide(total, 4, java.math.RoundingMode.HALF_UP);
+        if (raw.compareTo(BigDecimal.ZERO) < 0) raw = BigDecimal.ZERO;
+        if (raw.compareTo(BigDecimal.ONE) > 0) raw = BigDecimal.ONE;
+        // 映射到 [0.30, 1.00]，与系统其它“匹配度”输出区间保持一致，避免出现大量 0%
+        BigDecimal score = new BigDecimal("0.30").add(raw.multiply(new BigDecimal("0.70")));
+        if (score.compareTo(BigDecimal.ZERO) < 0) score = BigDecimal.ZERO;
+        if (score.compareTo(BigDecimal.ONE) > 0) score = BigDecimal.ONE;
+        return score.setScale(4, java.math.RoundingMode.HALF_UP);
     }
 
     /**
@@ -355,6 +466,20 @@ public class MentorApplicationService {
         resp.setTeacherComment(app.getTeacherComment());
         resp.setCreatedAt(app.getCreatedAt());
         resp.setUpdatedAt(app.getUpdatedAt());
+
+        // 透出姓名，便于前端列表直接展示，避免额外拉全量用户数据
+        if (app.getStudentId() != null) {
+            User student = userMapper.selectById(app.getStudentId());
+            if (student != null) {
+                resp.setStudentName(student.getRealName());
+            }
+        }
+        if (app.getTeacherId() != null) {
+            User teacher = userMapper.selectById(app.getTeacherId());
+            if (teacher != null) {
+                resp.setTeacherName(teacher.getRealName());
+            }
+        }
         return resp;
     }
 }

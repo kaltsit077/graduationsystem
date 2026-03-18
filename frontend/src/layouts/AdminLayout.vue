@@ -1,5 +1,5 @@
 <template>
-  <el-container class="layout-container">
+  <el-container class="layout-container" :style="layoutBgStyle">
     <el-header class="layout-header">
       <div class="header-left">
         <button
@@ -87,11 +87,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { HomeFilled, Document, User, ArrowDown, Setting, SwitchButton } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { getMyBackground } from '@/api/userPreference'
 
 const route = useRoute()
 const router = useRouter()
@@ -102,6 +103,50 @@ const activeMenu = computed(() => route.path)
 const isAsideCollapsed = ref(false)
 const squareBackAnimating = ref(false)
 const asideWidth = computed(() => (isAsideCollapsed.value ? '64px' : '220px'))
+
+const layoutBgStyle = computed(() => {
+  const url = authStore.backgroundUrl
+  const overlay = Number.isFinite(authStore.bgOverlayAlpha) ? authStore.bgOverlayAlpha : 0.78
+  const scale = Number.isFinite(authStore.backgroundScale) ? authStore.backgroundScale : 100
+  const posX = Number.isFinite(authStore.backgroundPosX) ? authStore.backgroundPosX : 50
+  const posY = Number.isFinite(authStore.backgroundPosY) ? authStore.backgroundPosY : 50
+  const contentAlpha = Number.isFinite(authStore.contentAlpha) ? authStore.contentAlpha : 1
+  const contentBlur = Number.isFinite(authStore.contentBlur) ? authStore.contentBlur : 0
+
+  const vars: Record<string, string> = {
+    '--app-content-alpha': String(contentAlpha),
+    '--app-content-blur': `${contentBlur}px`
+  }
+
+  if (!url) return vars
+  return {
+    ...vars,
+    backgroundImage: `linear-gradient(135deg, rgba(245, 247, 250, ${overlay}) 0%, rgba(238, 243, 251, ${overlay}) 50%, rgba(245, 247, 250, ${overlay}) 100%), url(${url})`,
+    backgroundSize: `${scale}%`,
+    backgroundPosition: `${posX}% ${posY}%`,
+    backgroundRepeat: 'no-repeat',
+    backgroundAttachment: 'fixed'
+  } as Record<string, string>
+})
+
+onMounted(async () => {
+  if (authStore.isAuthenticated() && !authStore.backgroundUrl) {
+    try {
+      const res = await getMyBackground()
+      authStore.setBackgroundUrl(res.data?.backgroundUrl || null)
+      authStore.setAppearance({
+        backgroundScale: res.data?.backgroundScale ?? 100,
+        backgroundPosX: res.data?.backgroundPosX ?? 50,
+        backgroundPosY: res.data?.backgroundPosY ?? 50,
+        bgOverlayAlpha: res.data?.bgOverlayAlpha ?? 0.78,
+        contentAlpha: res.data?.contentAlpha ?? 1.0,
+        contentBlur: res.data?.contentBlur ?? 0
+      })
+    } catch {
+      // ignore
+    }
+  }
+})
 
 const toggleAside = () => {
   if (isAsideCollapsed.value) {
@@ -141,7 +186,7 @@ const handleCommand = async (command: string) => {
 
 <style scoped>
 .layout-container {
-  height: 100vh;
+  min-height: 100vh;
   background: linear-gradient(135deg, #f5f7fa 0%, #eef3fb 50%, #f5f7fa 100%);
 }
 
@@ -409,12 +454,14 @@ const handleCommand = async (command: string) => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px 28px;
-  background-color: #ffffff;
+  background-color: rgba(255, 255, 255, var(--app-content-alpha, 1));
   border-radius: 16px;
   box-shadow: 0 18px 45px rgba(15, 35, 95, 0.08);
   box-sizing: border-box;
   overflow: hidden;
   animation: fade-slide-in 0.4s ease-out;
+  backdrop-filter: blur(var(--app-content-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--app-content-blur, 0px));
 }
 
 :deep(.sidebar-menu .el-menu-item) {

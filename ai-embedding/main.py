@@ -5,20 +5,22 @@ import os
 
 app = FastAPI()
 
-# 🔥 关键修改：指向你实际的模型缓存目录（替换成自己的快照ID）
-LOCAL_MODEL_PATH = "C:/Users/24484/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181"
+MODEL_PATH = os.getenv(
+    "EMBEDDING_MODEL_PATH",
+    "C:/Users/24484/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181",
+)
 
 # 验证路径是否存在
-if not os.path.exists(LOCAL_MODEL_PATH):
-    raise FileNotFoundError(f"模型目录不存在：{LOCAL_MODEL_PATH}")
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(f"模型目录不存在：{MODEL_PATH}")
 
 # 加载本地模型（添加参数确保从本地加载）
 model = BGEM3FlagModel(
-    LOCAL_MODEL_PATH,
+    MODEL_PATH,
     use_fp16=True,
     # 禁用网络下载，强制使用本地文件
     trust_remote_code=True,
-    cache_dir=os.path.dirname(LOCAL_MODEL_PATH)
+    cache_dir=os.path.dirname(MODEL_PATH)
 )
 
 class EmbedRequest(BaseModel):
@@ -47,4 +49,4 @@ def embed(req: EmbedRequest):
 # 测试接口
 @app.get("/")
 def root():
-    return {"message": "BGE-M3 嵌入服务已启动", "model_path": LOCAL_MODEL_PATH}
+    return {"message": "BGE-M3 嵌入服务已启动", "model_path": MODEL_PATH}

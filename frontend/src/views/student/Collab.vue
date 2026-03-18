@@ -21,8 +21,17 @@
           <el-table-column prop="fileName" label="文件名" min-width="200" />
           <el-table-column prop="status" label="状态" width="100" />
           <el-table-column prop="createdAt" label="上传时间" width="180" />
-          <el-table-column label="操作" width="140">
+          <el-table-column label="操作" width="220">
             <template #default="{ row }">
+              <el-button
+                v-if="row.fileUrl"
+                type="primary"
+                link
+                size="small"
+                @click="openFile(row.fileUrl)"
+              >
+                打开文件
+              </el-button>
               <el-button type="primary" link size="small" @click="openFeedback(row)">评价论文与导师</el-button>
             </template>
           </el-table-column>
@@ -36,20 +45,23 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <el-form :model="uploadForm" label-width="100px">
-        <el-form-item label="文件名">
-          <el-input v-model="uploadForm.fileName" placeholder="示例：毕业论文初稿.docx" />
-        </el-form-item>
-        <el-form-item label="文件地址">
-          <el-input v-model="uploadForm.fileUrl" placeholder="这里填存储后的访问地址（如 OSS 链接）" />
-        </el-form-item>
-        <el-form-item label="文件大小(字节)">
-          <el-input v-model.number="uploadForm.fileSize" type="number" />
-        </el-form-item>
-      </el-form>
+      <div class="upload-box">
+        <el-upload
+          drag
+          :show-file-list="false"
+          :before-upload="beforeUpload"
+          :http-request="doUpload"
+        >
+          <el-icon style="font-size: 34px; color: #409eff"><UploadFilled /></el-icon>
+          <div class="el-upload__text">将文件拖到这里，或 <em>点击上传</em></div>
+          <template #tip>
+            <div class="upload-tip">支持 pdf/doc/docx/ppt/pptx/zip/rar/7z，大小 ≤ 30MB</div>
+          </template>
+        </el-upload>
+      </div>
       <template #footer>
         <el-button @click="uploadDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitUpload" :loading="uploading">确定</el-button>
+        <el-button type="primary" @click="uploadDialogVisible = false" :disabled="uploading">完成</el-button>
       </template>
     </AppDialog>
 
@@ -109,10 +121,11 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 import AppDialog from '@/components/AppDialog.vue'
 import CollabPanel from '@/components/CollabPanel.vue'
 import { getMyApplications, type Application } from '@/api/application'
-import { getMyTheses, uploadThesis, type Thesis } from '@/api/thesis'
+import { getMyTheses, uploadThesisFile, type Thesis } from '@/api/thesis'
 import { getNotifications, sendChatMessage, type Notification } from '@/api/notification'
 import { saveStudentThesisFeedback, getThesisEvaluation } from '@/api/evaluation'
 import { createChangeRequest, type ChangeType } from '@/api/changeRequest'
@@ -129,11 +142,6 @@ const theses = ref<Thesis[]>([])
 const loadingThesis = ref(false)
 const uploadDialogVisible = ref(false)
 const uploading = ref(false)
-const uploadForm = ref({
-  fileName: '',
-  fileUrl: '',
-  fileSize: 0
-})
 
 const feedbackDialogVisible = ref(false)
 const feedbackThesisId = ref<number | null>(null)
@@ -221,36 +229,38 @@ const openUpload = () => {
     ElMessage.warning('请先确认选题')
     return
   }
-  uploadForm.value = {
-    fileName: '',
-    fileUrl: '',
-    fileSize: 0
-  }
   uploadDialogVisible.value = true
 }
 
-const submitUpload = async () => {
-  if (!approvedApplication.value) return
-  if (!uploadForm.value.fileName || !uploadForm.value.fileUrl || !uploadForm.value.fileSize) {
-    ElMessage.warning('请完整填写文件信息')
-    return
+const beforeUpload = (file: File) => {
+  const ok = file.size <= 30 * 1024 * 1024
+  if (!ok) {
+    ElMessage.error('文件过大，请上传 30MB 以内的文件')
+    return false
   }
+  return true
+}
+
+const doUpload = async (opts: any) => {
+  if (!approvedApplication.value) return
+  const file = opts?.file as File
+  if (!file) return
   uploading.value = true
   try {
-    await uploadThesis({
-      topicId: approvedApplication.value.topicId,
-      fileName: uploadForm.value.fileName,
-      fileUrl: uploadForm.value.fileUrl,
-      fileSize: uploadForm.value.fileSize
-    })
+    await uploadThesisFile(approvedApplication.value.topicId, file)
     ElMessage.success('上传成功')
     uploadDialogVisible.value = false
     await loadTheses()
   } catch {
-    ElMessage.error('上传失败')
+    // message 已由拦截器处理
   } finally {
     uploading.value = false
   }
+}
+
+const openFile = (url: string) => {
+  if (!url) return
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 const openFeedback = async (row: Thesis) => {
@@ -354,5 +364,15 @@ onMounted(async () => {
 .collab-toolbar-text {
   font-size: 13px;
   color: #606266;
+}
+
+.upload-box {
+  padding: 6px 0 2px;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 6px;
 }
 </style>

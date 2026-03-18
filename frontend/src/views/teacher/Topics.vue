@@ -131,14 +131,14 @@
     <AppDialog
       v-model="aiDialogVisible"
       title="AI 生成候选选题"
-      width="min(1280px, 96vw)"
+      width="min(1100px, 92vw)"
       :close-on-click-modal="false"
       destroy-on-close
     >
       <div class="ai-dialog-content">
       <div class="ai-dialog-lr">
         <div class="ai-dialog-left">
-          <el-scrollbar height="680px">
+          <el-scrollbar height="72vh">
             <el-form :model="aiForm" label-width="140px" style="margin-bottom: 12px">
               <el-form-item label="生成数量">
                 <el-input-number v-model="aiForm.count" :min="1" :max="10" />
@@ -229,7 +229,7 @@
               class="ai-right-alert"
               description="以下列表仅展示已经通过系统自动去重阈值的候选题目。你可以根据需要修改后再导入到选题列表中。"
             />
-            <el-scrollbar v-if="aiTopics.length > 0" height="640px">
+            <el-scrollbar v-if="aiTopics.length > 0" height="68vh">
               <div class="ai-topic-list">
                 <el-card
                   v-for="(t, index) in aiTopics"
@@ -637,7 +637,7 @@ const removeTopic = async (topic: Topic) => {
 
 /* AI 弹窗内容区：由内部控制高度与左右滚动 */
 .ai-dialog-content {
-  max-height: min(820px, 85vh);
+  max-height: 82vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -646,12 +646,12 @@ const removeTopic = async (topic: Topic) => {
 .ai-dialog-lr {
   display: flex;
   gap: 24px;
-  min-height: 660px;
+  min-height: 0;
   flex: 1;
 }
 
 .ai-dialog-left {
-  flex: 0 0 440px;
+  flex: 0 0 420px;
   border-right: 1px solid var(--el-border-color-lighter);
   padding-right: 20px;
 }

@@ -102,6 +102,77 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                         "ADD COLUMN tag_mode ENUM('MAJOR','INTEREST','BOTH') DEFAULT 'BOTH' " +
                         "COMMENT '标签生成模式：仅专业/仅兴趣/综合' AFTER interest_desc"
         );
+
+        // student_profile.major_courses：主修课程，用于增强“仅专业/综合”的标签生成信号
+        ensureColumnExists(
+                "student_profile",
+                "major_courses",
+                "ALTER TABLE student_profile " +
+                        "ADD COLUMN major_courses TEXT NULL " +
+                        "COMMENT '主修课程/已修课程（用于专业侧标签生成）' AFTER major"
+        );
+
+        // user_tag.tag_type：用户可标注标签属于“专业/兴趣”，便于展示与个性化权重解释
+        ensureColumnExists(
+                "user_tag",
+                "tag_type",
+                "ALTER TABLE user_tag " +
+                        "ADD COLUMN tag_type ENUM('MAJOR','INTEREST') NOT NULL DEFAULT 'INTEREST' " +
+                        "COMMENT '标签类型：专业/兴趣' AFTER tag_name"
+        );
+
+        // user.background_url：用户自定义背景图（静态资源 URL）
+        ensureColumnExists(
+                "user",
+                "background_url",
+                "ALTER TABLE user " +
+                        "ADD COLUMN background_url VARCHAR(500) NULL " +
+                        "COMMENT '用户自定义背景图 URL（静态资源路径）' AFTER real_name"
+        );
+
+        // user 背景外观参数：缩放/位置/透明度/模糊（避免旧库缺列导致登录页/个人中心报 Unknown column）
+        ensureColumnExists(
+                "user",
+                "background_scale",
+                "ALTER TABLE user " +
+                        "ADD COLUMN background_scale INT NOT NULL DEFAULT 100 " +
+                        "COMMENT '背景缩放百分比（50-200）' AFTER background_url"
+        );
+        ensureColumnExists(
+                "user",
+                "background_pos_x",
+                "ALTER TABLE user " +
+                        "ADD COLUMN background_pos_x INT NOT NULL DEFAULT 50 " +
+                        "COMMENT '背景水平位置百分比（0-100）' AFTER background_scale"
+        );
+        ensureColumnExists(
+                "user",
+                "background_pos_y",
+                "ALTER TABLE user " +
+                        "ADD COLUMN background_pos_y INT NOT NULL DEFAULT 50 " +
+                        "COMMENT '背景垂直位置百分比（0-100）' AFTER background_pos_x"
+        );
+        ensureColumnExists(
+                "user",
+                "bg_overlay_alpha",
+                "ALTER TABLE user " +
+                        "ADD COLUMN bg_overlay_alpha DECIMAL(3,2) NOT NULL DEFAULT 0.78 " +
+                        "COMMENT '背景遮罩透明度（0-1，越大越白）' AFTER background_pos_y"
+        );
+        ensureColumnExists(
+                "user",
+                "content_alpha",
+                "ALTER TABLE user " +
+                        "ADD COLUMN content_alpha DECIMAL(3,2) NOT NULL DEFAULT 1.00 " +
+                        "COMMENT '内容容器白底透明度（0-1）' AFTER bg_overlay_alpha"
+        );
+        ensureColumnExists(
+                "user",
+                "content_blur",
+                "ALTER TABLE user " +
+                        "ADD COLUMN content_blur INT NOT NULL DEFAULT 0 " +
+                        "COMMENT '内容容器毛玻璃模糊强度（px，0-24）' AFTER content_alpha"
+        );
     }
 
     private static class SchemaReport {

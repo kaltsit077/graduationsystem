@@ -246,6 +246,9 @@ public class AiTopicService {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", properties.getModel());
         requestBody.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+        // 生成类任务：适当降低随机性与不必要的长输出，减少模型推理耗时
+        requestBody.put("temperature", 0.3);
+        requestBody.put("max_tokens", Math.max(800, Math.min(2500, count * 450)));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

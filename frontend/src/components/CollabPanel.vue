@@ -126,21 +126,33 @@
     <!-- 悬浮可拖拽消息面板：仅在“专注作业”模式下显示 -->
     <div
       v-if="viewMode === 'focus'"
+      ref="floatingChatRef"
       class="floating-chat"
       :class="{ 'floating-chat-collapsed': chatCollapsed }"
       :style="{ transform: `translate(${chatPosition.x}px, ${chatPosition.y}px)` }"
     >
-      <div class="floating-chat-header" @mousedown="startDrag" @dblclick="toggleCollapsed">
-        <span class="floating-chat-title">消息对话</span>
-        <div class="floating-chat-tools">
-          <el-tag v-if="unreadCount > 0" type="danger" size="small" effect="plain">
-            未读 {{ unreadCount }}
-          </el-tag>
-          <el-button link size="small" @click.stop="emit('refreshMessages')">刷新</el-button>
-          <el-button link size="small" @click.stop="toggleCollapsed">
-            {{ chatCollapsed ? '展开' : '收起' }}
-          </el-button>
-        </div>
+      <div
+        class="floating-chat-header"
+        @mousedown="startDrag"
+        @dblclick="toggleCollapsed"
+        @click="chatCollapsed ? toggleCollapsed() : undefined"
+      >
+        <template v-if="chatCollapsed">
+          <div class="bubble">
+            <el-icon class="bubble-icon"><ChatDotRound /></el-icon>
+            <span v-if="unreadCount > 0" class="bubble-badge">{{ unreadCount }}</span>
+          </div>
+        </template>
+        <template v-else>
+          <span class="floating-chat-title">消息对话</span>
+          <div class="floating-chat-tools">
+            <el-tag v-if="unreadCount > 0" type="danger" size="small" effect="plain">
+              未读 {{ unreadCount }}
+            </el-tag>
+            <el-button link size="small" @click.stop="emit('refreshMessages')">刷新</el-button>
+            <el-button link size="small" @click.stop="toggleCollapsed">收起</el-button>
+          </div>
+        </template>
       </div>
       <transition name="floating-body">
         <div v-show="!chatCollapsed" class="floating-chat-body">
@@ -218,6 +230,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Application } from '@/api/application'
 import type { Notification } from '@/api/notification'
+import { ChatDotRound } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   identity: 'student' | 'teacher'
@@ -237,6 +250,7 @@ const sending = ref(false)
 const chatScrollRef = ref()
 const chatCollapsed = ref(false)
 const chatPosition = ref({ x: 0, y: 0 })
+const floatingChatRef = ref<HTMLDivElement | null>(null)
 const thesisHighlight = ref(false)
 const templates = [
   '老师您好，本周的进度如下：',
@@ -304,13 +318,57 @@ const startDrag = (event: MouseEvent) => {
   window.addEventListener('mouseup', stopDrag)
 }
 
+const getFloatingBounds = () => {
+  const el = floatingChatRef.value
+  const w = el?.offsetWidth ?? 360
+  const h = el?.offsetHeight ?? 260
+  const baseLeft = 24
+  const baseTop = 120
+  const pad = 8
+  const maxX = Math.max(0, window.innerWidth - w - baseLeft - pad)
+  const maxY = Math.max(0, window.innerHeight - h - baseTop - pad)
+  return { w, h, maxX, maxY }
+}
+
+const clampPosition = (pos: { x: number; y: number }) => {
+  const { maxX, maxY } = getFloatingBounds()
+  return {
+    x: Math.min(Math.max(0, pos.x), maxX),
+    y: Math.min(Math.max(0, pos.y), maxY)
+  }
+}
+
+/**
+ * 贴边“磁吸”：只有靠近边缘才吸附
+ * - 避免“松手必回左边”的强制行为
+ * - 当视窗较窄导致 maxX=0 时，也不会产生奇怪的跳动
+ */
+const snapIfNearEdge = (thresholdPx = 32) => {
+  const { maxX } = getFloatingBounds()
+  const cur = clampPosition(chatPosition.value)
+
+  // 离左边很近 → 吸左；离右边很近 → 吸右；否则保持当前位置
+  if (cur.x <= thresholdPx) {
+    chatPosition.value = { x: 0, y: cur.y }
+    return
+  }
+  if (maxX - cur.x <= thresholdPx) {
+    chatPosition.value = { x: maxX, y: cur.y }
+  }
+}
+
 const onDragging = (event: MouseEvent) => {
   if (!dragging) return
   const dx = event.clientX - pointerStartX
   const dy = event.clientY - pointerStartY
+  const { maxX, maxY } = getFloatingBounds()
+
+  const nextX = dragStartX + dx
+  const nextY = dragStartY + dy
+
   chatPosition.value = {
-    x: dragStartX + dx,
-    y: dragStartY + dy
+    x: Math.min(Math.max(0, nextX), maxX),
+    y: Math.min(Math.max(0, nextY), maxY)
   }
 }
 
@@ -319,6 +377,7 @@ const stopDrag = () => {
   dragging = false
   window.removeEventListener('mousemove', onDragging)
   window.removeEventListener('mouseup', stopDrag)
+  snapIfNearEdge()
 }
 
 onBeforeUnmount(() => {
@@ -327,6 +386,11 @@ onBeforeUnmount(() => {
 
 const toggleCollapsed = () => {
   chatCollapsed.value = !chatCollapsed.value
+  // 收起/展开会改变宽高，重新夹紧并贴边，避免越界或半遮挡
+  requestAnimationFrame(() => {
+    chatPosition.value = clampPosition(chatPosition.value)
+    snapIfNearEdge()
+  })
 }
 
 const useTemplate = (text: string) => {
@@ -492,9 +556,9 @@ const send = async () => {
 }
 
 .floating-chat {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
+  position: fixed;
+  left: 24px;
+  top: 120px;
   width: 360px;
   max-width: 90%;
   background-color: #ffffff;
@@ -503,6 +567,9 @@ const send = async () => {
   overflow: hidden;
   cursor: default;
   user-select: none;
+  /* 保证在各种弹窗/抽屉之上（ElementPlus 默认 dialog 在 2000 左右） */
+  z-index: 3200;
+  transition: width 0.18s ease, height 0.18s ease, border-radius 0.18s ease, box-shadow 0.18s ease;
 }
 
 .floating-chat-header {
@@ -532,6 +599,50 @@ const send = async () => {
 
 .chat-box-floating {
   height: 260px;
+}
+
+.floating-chat-collapsed {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  box-shadow: 0 14px 32px rgba(15, 35, 95, 0.22);
+}
+
+.floating-chat-collapsed .floating-chat-header {
+  padding: 0;
+  width: 56px;
+  height: 56px;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.bubble {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bubble-icon {
+  font-size: 22px;
+}
+
+.bubble-badge {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 6px 14px rgba(245, 108, 108, 0.35);
 }
 
 .floating-chat-collapsed .floating-chat-body {

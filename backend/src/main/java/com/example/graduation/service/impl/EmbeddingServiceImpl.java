@@ -10,6 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,14 +37,27 @@ public class EmbeddingServiceImpl implements EmbeddingService {
 
     private final RestTemplate restTemplate;
 
+    private final Map<String, float[]> cache;
+
     @Value("${embedding.enabled:true}")
     private boolean enabled;
 
     @Value("${embedding.base-url:http://localhost:8000}")
     private String baseUrl;
 
+    @Value("${embedding.cache.max-entries:512}")
+    private int cacheMaxEntries;
+
     public EmbeddingServiceImpl(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
+        this.cache = Collections.synchronizedMap(new LinkedHashMap<String, float[]>(256, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, float[]> eldest) {
+                // 默认上限会在首次请求后由 @Value 注入，这里先用当前字段值兜底
+                int max = cacheMaxEntries > 0 ? cacheMaxEntries : 512;
+                return size() > max;
+            }
+        });
     }
 
     @Override
@@ -54,13 +69,19 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             return null;
         }
 
+        String normalized = normalizeText(text);
+        float[] cached = cache.get(normalized);
+        if (cached != null) {
+            return cached;
+        }
+
         try {
             String url = baseUrl.endsWith("/") ? baseUrl + "embed" : baseUrl + "/embed";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            Map<String, Object> body = Map.of("text", text.trim());
+            Map<String, Object> body = Map.of("text", normalized);
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
             @SuppressWarnings("unchecked")
@@ -94,11 +115,20 @@ public class EmbeddingServiceImpl implements EmbeddingService {
                     result[i] = Float.parseFloat(v.toString());
                 }
             }
+            cache.put(normalized, result);
             return result;
         } catch (Exception e) {
             log.warn("调用 Embedding 服务失败，将回退到标签匹配: {}", e.getMessage());
             return null;
         }
+    }
+
+    private String normalizeText(String text) {
+        // 只做轻量归一化，提升缓存命中率，避免引入额外依赖
+        String t = text.trim();
+        if (t.isEmpty()) return t;
+        // 将连续空白压缩为单空格
+        return t.replaceAll("\\s+", " ");
     }
 }
 

@@ -20,6 +20,11 @@ public class StudentProfile {
     private Long userId;
     
     private String major;
+
+    /**
+     * 主修课程/已修课程（用于增强“专业侧标签生成”信号）
+     */
+    private String majorCourses;
     
     private String grade;
     

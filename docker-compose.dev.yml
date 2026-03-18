@@ -19,8 +19,9 @@ services:
     volumes:
       # 数据持久化
       - mysql_data_dev:/var/lib/mysql
-      # 初始化脚本（开发环境仅执行建表脚本）
+      # 初始化脚本（仅在数据卷为空时执行一次）
       - ./backend/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./scripts/init_data.sql:/docker-entrypoint-initdb.d/02-init-data.sql:ro
     command: 
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -32,6 +33,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Embedding 服务（可选：仅在启用 profile=embedding 时启动）
+  # 用法：docker compose -f docker-compose.dev.yml --profile embedding up -d --build
+  embedding:
+    profiles: ["embedding"]
+    build:
+      context: ./ai-embedding
+      dockerfile: Dockerfile
+    container_name: embedding-dev
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      # 将模型目录挂载到容器内后，配置该路径
+      EMBEDDING_MODEL_PATH: /models/bge-m3
+    volumes:
+      # ⚠️ Windows 下请确保该路径存在（指向 bge-m3 的 snapshots 目录）
+      - C:/Users/24484/.cache/huggingface/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181:/models/bge-m3:ro
+    networks:
+      - graduation-network-dev
 
   # 后端服务（开发模式 - 支持热更新）
   backend:
@@ -57,6 +78,8 @@ services:
       ADMIN_AUTO_CREATE: "false"
       # Spring Boot 开发配置
       SPRING_PROFILES_ACTIVE: prod
+      # Embedding 服务（启用 embedding profile 时，用服务名访问）
+      EMBEDDING_BASE_URL: http://embedding:8000
     volumes:
       # 挂载源代码目录（实现热更新）
       - ./backend:/app
@@ -90,6 +113,8 @@ services:
       - "5173:5173"
     environment:
       - NODE_ENV=development
+      # 让 Vite 在容器内将 /api 代理到 backend 容器，而不是 localhost
+      - VITE_BACKEND_URL=http://backend:9090
     volumes:
       # 挂载源代码目录（实现热更新）
       - ./frontend:/app

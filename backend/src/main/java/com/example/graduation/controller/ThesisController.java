@@ -10,10 +10,19 @@ import com.example.graduation.mapper.TopicMapper;
 import com.example.graduation.mapper.UserMapper;
 import com.example.graduation.service.ThesisService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
@@ -28,6 +37,12 @@ public class ThesisController {
     
     @Autowired
     private UserMapper userMapper;
+
+    @Value("${app.upload-dir:./uploads}")
+    private String uploadDir;
+
+    private static final long MAX_BYTES = 30L * 1024 * 1024; // 30MB
+    private static final Set<String> ALLOWED_EXT = Set.of("pdf", "doc", "docx", "ppt", "pptx", "zip", "rar", "7z");
     
     /**
      * 获取当前用户ID
@@ -53,6 +68,63 @@ public class ThesisController {
                 requestDto.getFileSize()
         );
         
+        ThesisResponse response = convertToResponse(thesis);
+        return ApiResponse.success(response);
+    }
+
+    /**
+     * 上传论文文件（服务器存储），返回可直接访问的 URL
+     */
+    @PostMapping("/upload-file")
+    public ApiResponse<ThesisResponse> uploadThesisFile(
+            @RequestParam("topicId") Long topicId,
+            @RequestParam("file") MultipartFile file,
+            HttpServletRequest request
+    ) throws IOException {
+        Long studentId = getCurrentUserId(request);
+
+        if (topicId == null) {
+            throw new RuntimeException("topicId 不能为空");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new RuntimeException("请选择要上传的文件");
+        }
+        if (file.getSize() > MAX_BYTES) {
+            throw new RuntimeException("文件过大，请上传 30MB 以内的文件");
+        }
+
+        String original = file.getOriginalFilename();
+        String ext = "";
+        if (original != null && original.contains(".")) {
+            ext = original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+        }
+        if (!ALLOWED_EXT.contains(ext)) {
+            throw new RuntimeException("仅支持 pdf/doc/docx/ppt/pptx/zip/rar/7z 格式");
+        }
+
+        Path root = Paths.get(uploadDir).toAbsolutePath().normalize();
+        Path dir = root.resolve("thesis");
+        Files.createDirectories(dir);
+
+        String filename = "t" + topicId + "-s" + studentId + "-" + UUID.randomUUID() + "." + ext;
+        Path target = dir.resolve(filename).normalize();
+        if (!target.startsWith(dir)) {
+            throw new RuntimeException("非法文件路径");
+        }
+        file.transferTo(target.toFile());
+
+        String url = "/uploads/thesis/" + filename;
+        String fileName = original == null || original.trim().isEmpty() ? filename : original.trim();
+        long fileSize = file.getSize();
+
+        Thesis thesis = thesisService.uploadThesis(
+                topicId,
+                studentId,
+                url,
+                fileName,
+                fileSize
+        );
+
         ThesisResponse response = convertToResponse(thesis);
         return ApiResponse.success(response);
     }

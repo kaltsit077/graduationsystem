@@ -9,6 +9,10 @@ public class TagRegenerateRequest {
     private String interestDesc;
     private String major;
     /**
+     * 主修课程/已修课程（用于增强专业侧标签生成）
+     */
+    private String majorCourses;
+    /**
      * 标签生成模式：MAJOR / INTEREST / BOTH
      */
     private String tagMode;

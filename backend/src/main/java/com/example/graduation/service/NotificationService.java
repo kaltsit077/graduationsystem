@@ -19,12 +19,19 @@ public class NotificationService {
      * 创建通知
      */
     public Notification createNotification(Long userId, String type, String title, String content, Long relatedId) {
+        return createNotification(userId, type, title, content, relatedId, 0);
+    }
+
+    /**
+     * 创建通知（可指定已读状态）
+     */
+    public Notification createNotification(Long userId, String type, String title, String content, Long relatedId, int isRead) {
         Notification notification = new Notification();
         notification.setUserId(userId);
         notification.setType(type);
         notification.setTitle(title);
         notification.setContent(content);
-        notification.setIsRead(0);
+        notification.setIsRead(isRead);
         notification.setRelatedId(relatedId);
         notification.setCreatedAt(LocalDateTime.now());
         

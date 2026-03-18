@@ -1,43 +1,92 @@
 <template>
-  <div class="student-teachers-page">
+  <div class="student-teachers-page page-container page-scope">
     <el-card class="filter-card">
-      <el-form :inline="true" :model="filters" @submit.prevent>
-        <el-form-item label="导师姓名">
-          <el-input v-model="filters.keyword" placeholder="按姓名或方向搜索" clearable @keyup.enter.native="loadData" />
-        </el-form-item>
-        <el-form-item label="研究方向">
-          <el-input v-model="filters.direction" placeholder="输入研究方向关键词" clearable @keyup.enter.native="loadData" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadData">搜索</el-button>
-          <el-button @click="resetFilters">重置</el-button>
-        </el-form-item>
+      <div class="filter-header">
+        <div class="filter-title">
+          <div class="page-title">导师列表</div>
+        </div>
+        <el-button type="primary" plain @click="loadData" :loading="loading">刷新</el-button>
+      </div>
+      <el-form class="filter-form" :model="filters" label-position="top" @submit.prevent>
+        <el-row :gutter="12">
+          <el-col :xs="24" :sm="12" :md="8">
+            <el-form-item label="关键词">
+              <el-input
+                v-model="filters.keyword"
+                placeholder="姓名 / 方向 / 标签"
+                clearable
+                @keyup.enter="loadData"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="8">
+            <el-form-item label="研究方向">
+              <el-input
+                v-model="filters.direction"
+                placeholder="输入方向关键词"
+                clearable
+                @keyup.enter="loadData"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="24" :md="8" class="filter-actions-col">
+            <el-form-item label=" ">
+              <div class="filter-actions">
+                <el-button type="primary" @click="loadData">搜索</el-button>
+                <el-button @click="resetFilters">重置</el-button>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-form>
     </el-card>
 
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>导师列表</span>
-          <el-button type="primary" link @click="loadData" :loading="loading">刷新</el-button>
-        </div>
-      </template>
+    <el-card class="page-card" shadow="never">
+      <el-table
+        :data="filteredTeachers"
+        v-loading="loading"
+        style="width: 100%"
+        stripe
+        size="large"
+        table-layout="fixed"
+      >
+        <el-table-column label="导师" min-width="220">
+          <template #default="{ row }">
+            <div class="teacher-cell">
+              <div class="teacher-name-row">
+                <span class="teacher-name">{{ row.realName }}</span>
+                <el-tag v-if="row.title" size="small" effect="plain">{{ row.title }}</el-tag>
+                <el-tag v-if="row.matchScore != null" size="small" :type="getMatchTagType(row.matchScore || 0)">
+                  {{ ((row.matchScore || 0) * 100).toFixed(0) }}%
+                </el-tag>
+                <span v-if="isStrongRecommend(row)" class="strong-recommend" title="匹配度较高且与研究方向/标签有关联，推荐">
+                  👍
+                </span>
+              </div>
+              <div v-if="row.researchDirection" class="teacher-sub">
+                方向：{{ row.researchDirection }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
 
-      <el-table :data="filteredTeachers" v-loading="loading" style="width: 100%">
-        <el-table-column prop="realName" label="导师姓名" width="120" />
-        <el-table-column prop="title" label="职称" width="120" />
-        <el-table-column prop="researchDirection" label="研究方向" min-width="200" show-overflow-tooltip />
-        <el-table-column label="带生情况" width="180">
+        <el-table-column label="带生 / 容量" width="140">
           <template #default="{ row }">
             <span>{{ row.currentStudentCount ?? 0 }} / {{ row.maxStudentCount ?? '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="选题情况" width="220">
+
+        <el-table-column label="开放选题" width="110">
           <template #default="{ row }">
-            <div>开放选题：{{ row.openTopicCount ?? 0 }}</div>
+            <el-tag size="small" type="info" effect="plain">{{ row.openTopicCount ?? 0 }}</el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="标签" min-width="220">
+          <template #default="{ row }">
             <div v-if="row.tags && row.tags.length" class="tag-list">
               <el-tag
-                v-for="tag in row.tags"
+                v-for="tag in row.tags.slice(0, 4)"
                 :key="tag"
                 size="small"
                 type="info"
@@ -45,29 +94,20 @@
               >
                 {{ tag }}
               </el-tag>
+              <el-tag v-if="row.tags.length > 4" size="small" effect="plain" class="tag-more">
+                +{{ row.tags.length - 4 }}
+              </el-tag>
             </div>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="历史评价概览" min-width="220">
-          <template #default="{ row }">
-            <div v-if="row.totalStudents && row.totalStudents > 0">
-              <div>累计学生数：{{ row.totalStudents }}</div>
-              <div v-if="row.avgScore != null">平均成绩：{{ row.avgScore.toFixed(2) }}</div>
-              <div v-if="row.excellentRatio != null">
-                优秀率：{{ (row.excellentRatio * 100).toFixed(1) }}%
-              </div>
-              <div v-if="row.failRatio != null">
-                不及格率：{{ (row.failRatio * 100).toFixed(1) }}%
-              </div>
-            </div>
-            <span v-else class="text-muted">暂缺评价数据</span>
-          </template>
-        </el-table-column>
+
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="openApplyDialog(row)">
-              申请成为该导师学员
-            </el-button>
+            <div class="table-actions">
+              <el-button type="primary" link @click="openDetail(row)">详情</el-button>
+              <el-button type="primary" size="small" @click="openApplyDialog(row)">申请</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -77,11 +117,75 @@
       </div>
     </el-card>
 
+    <el-drawer v-model="detailDrawerVisible" size="520px" :with-header="false">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <div class="drawer-name">{{ selectedTeacher?.realName || '导师详情' }}</div>
+          <div class="drawer-sub" v-if="selectedTeacher?.researchDirection">
+            研究方向：{{ selectedTeacher?.researchDirection }}
+          </div>
+        </div>
+        <el-button text @click="detailDrawerVisible = false">关闭</el-button>
+      </div>
+
+      <el-card shadow="never" class="drawer-card">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="职称">
+            {{ selectedTeacher?.title || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="匹配度">
+            <span v-if="selectedTeacher?.matchScore != null">
+              {{ ((selectedTeacher?.matchScore || 0) * 100).toFixed(0) }}%
+            </span>
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="带生情况">
+            {{ selectedTeacher?.currentStudentCount ?? 0 }} / {{ selectedTeacher?.maxStudentCount ?? '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="开放选题">
+            {{ selectedTeacher?.openTopicCount ?? 0 }}
+          </el-descriptions-item>
+          <el-descriptions-item label="历史评价概览">
+            <div v-if="selectedTeacher?.totalStudents && selectedTeacher.totalStudents > 0">
+              <div>累计学生数：{{ selectedTeacher.totalStudents }}</div>
+              <div v-if="selectedTeacher.avgScore != null">平均成绩：{{ selectedTeacher.avgScore.toFixed(2) }}</div>
+              <div v-if="selectedTeacher.excellentRatio != null">
+                优秀率：{{ (selectedTeacher.excellentRatio * 100).toFixed(1) }}%
+              </div>
+              <div v-if="selectedTeacher.failRatio != null">
+                不及格率：{{ (selectedTeacher.failRatio * 100).toFixed(1) }}%
+              </div>
+            </div>
+            <span v-else class="text-muted">暂缺评价数据</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="研究标签">
+            <div v-if="selectedTeacher?.tags && selectedTeacher.tags.length" class="tag-list drawer-tags">
+              <el-tag
+                v-for="tag in selectedTeacher.tags"
+                :key="tag"
+                size="small"
+                type="info"
+                class="tag-item"
+              >
+                {{ tag }}
+              </el-tag>
+            </div>
+            <span v-else class="text-muted">-</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        <div class="drawer-actions">
+          <el-button @click="detailDrawerVisible = false">返回</el-button>
+          <el-button type="primary" @click="selectedTeacher && openApplyDialog(selectedTeacher)">去申请</el-button>
+        </div>
+      </el-card>
+    </el-drawer>
+
     <AppDialog
       v-model="applyDialog.visible"
       title="申请成为该导师学员"
-      width="720px"
+      width="860px"
       :close-on-click-modal="false"
+      body-max-height="70vh"
     >
       <div class="mentor-dialog-body" v-if="applyDialog.teacher">
         <div class="mentor-summary">
@@ -179,7 +283,7 @@ const resetFilters = () => {
 const filteredTeachers = computed(() => {
   const kw = filters.keyword.trim().toLowerCase()
   const dir = filters.direction.trim().toLowerCase()
-  return teachers.value.filter((t) => {
+  const list = teachers.value.filter((t) => {
     const nameMatch =
       !kw ||
       (t.realName && t.realName.toLowerCase().includes(kw)) ||
@@ -193,7 +297,37 @@ const filteredTeachers = computed(() => {
 
     return nameMatch && dirMatch
   })
+
+  // 若后端返回了匹配度，则按匹配度从高到低排序，让更契合当前学生的导师排在前面
+  return [...list].sort((a, b) => {
+    const ma = a.matchScore ?? -1
+    const mb = b.matchScore ?? -1
+    return mb - ma
+  })
 })
+
+const getMatchTagType = (score: number) => {
+  // 匹配度越高越好：越高越绿、越低越红
+  if (score >= 0.8) return 'success'
+  if (score >= 0.6) return 'warning'
+  if (score >= 0.4) return 'danger'
+  return 'info'
+}
+
+const isStrongRecommend = (teacher: TeacherOverview) => {
+  const score = teacher.matchScore ?? 0
+  const hasAssociation = Boolean(teacher.tags && teacher.tags.length)
+  // “高度吻合”且“有关联”（这里用命中标签作为关联证据）
+  return score >= 0.75 && hasAssociation
+}
+
+const detailDrawerVisible = ref(false)
+const selectedTeacher = ref<TeacherOverview | null>(null)
+
+const openDetail = (teacher: TeacherOverview) => {
+  selectedTeacher.value = teacher
+  detailDrawerVisible.value = true
+}
 
 const applyDialog = reactive<{
   visible: boolean
@@ -244,17 +378,43 @@ onMounted(() => {
 <style scoped>
 .student-teachers-page {
   max-width: 1200px;
-  margin: 0 auto;
 }
 
 .filter-card {
   margin-bottom: 16px;
+  border-radius: 12px;
 }
 
-.card-header {
+.filter-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.filter-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.filter-form :deep(.el-form-item) {
+  margin-bottom: 10px;
+}
+
+.filter-actions-col :deep(.el-form-item__content) {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.filter-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.page-card {
+  border-radius: 12px;
 }
 
 .empty-tip {
@@ -264,15 +424,99 @@ onMounted(() => {
 }
 
 .tag-list {
-  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.tag-item + .tag-item {
-  margin-left: 4px;
+.tag-item {
+  margin: 0;
 }
 
-.text-muted {
-  color: #909399;
+.tag-more {
+  color: #606266;
+}
+
+.strong-recommend {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.teacher-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.teacher-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.teacher-name {
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.teacher-sub {
+  font-size: 12px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 6px 4px 12px;
+}
+
+.drawer-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drawer-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2329;
+  line-height: 1.2;
+}
+
+.drawer-sub {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.2;
+}
+
+.drawer-card {
+  border-radius: 12px;
+}
+
+.drawer-tags {
+  padding-top: 4px;
+}
+
+.drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 
@@ -318,6 +562,16 @@ onMounted(() => {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .mentor-dialog-body {
+    flex-direction: column;
+  }
+
+  .mentor-summary {
+    padding: 12px 14px;
+  }
 }
 </style>
 

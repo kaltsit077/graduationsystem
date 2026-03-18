@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -120,8 +121,9 @@ public class TagService {
                     for (String name : value) {
                         UserTag tag = new UserTag();
                         tag.setTagName(name);
-                        // 专业映射标签略低于兴趣标签，保留为 0.80
-                        tag.setWeight(new BigDecimal("0.80"));
+                        // 词典映射标签也使用 0.30–1.00 的稳定随机权重，中心偏向 0.80
+                        tag.setWeight(sampleWeight(majorText, name, new BigDecimal("0.80")));
+                        tag.setTagType("MAJOR");
                         tags.add(tag);
                     }
                 }
@@ -157,13 +159,19 @@ public class TagService {
             Long userId,
             String interestDesc,
             String major,
+            String majorCourses,
             String tagMode,
             List<UserTag> pinnedTags,
             List<String> excludeTagNames,
             Integer desiredTotal) {
         userTagMapper.delete(new LambdaQueryWrapper<UserTag>().eq(UserTag::getUserId, userId));
 
+        // 统一限制：单个用户的标签总数上限为 9
+        int maxTotal = 9;
         int total = (desiredTotal == null || desiredTotal <= 0) ? 5 : desiredTotal;
+        if (total > maxTotal) {
+            total = maxTotal;
+        }
         List<UserTag> pinned = pinnedTags == null ? new ArrayList<>() : pinnedTags.stream()
                 .filter(Objects::nonNull)
                 .filter(t -> t.getTagName() != null && !t.getTagName().trim().isEmpty())
@@ -206,13 +214,57 @@ public class TagService {
         // 只重抽未固定部分：目标数量 = total - pinned
         int remaining = Math.max(0, total - pinned.size());
         if (remaining > 0) {
-            String combinedText = buildCombinedText(useInterest ? interestDesc : null, useMajor ? major : null);
-            if (combinedText == null || combinedText.isBlank()) {
+            String interestText = useInterest ? interestDesc : null;
+            String majorText = useMajor ? buildMajorText(major, majorCourses) : null;
+
+            boolean hasInterest = interestText != null && !interestText.trim().isEmpty();
+            boolean hasMajor = majorText != null && !majorText.trim().isEmpty();
+
+            if (!hasInterest && !hasMajor) {
                 throw new IllegalArgumentException("用于生成标签的文本为空，请先填写兴趣描述/专业（或研究方向）");
             }
 
-            BigDecimal weight = "MAJOR".equals(mode) ? new BigDecimal("0.80") : new BigDecimal("0.90");
-            generated.addAll(extractTagsAiOnly(combinedText, weight, excludeLower, remaining, 2));
+            // 综合模式下，为避免“兴趣描述更长导致生成结果偏兴趣”，改为分别抽取再合并。
+            // 不做强制硬比例，但尽量让两侧都有覆盖。
+            if ("BOTH".equals(mode) && hasInterest && hasMajor) {
+                int interestCount = (remaining + 1) / 2; // 向上取整
+                int majorCount = remaining - interestCount;
+
+                if (interestCount > 0) {
+                    String it = interestText == null ? "" : interestText.trim();
+                    List<UserTag> part = extractTagsAiOnly(it, new BigDecimal("0.90"), excludeLower, interestCount, 2);
+                    part.forEach(t -> {
+                        if (t != null) t.setTagType("INTEREST");
+                    });
+                    generated.addAll(part);
+                    // 将已生成的标签加入排除集合，避免专业侧重复
+                    for (UserTag t : generated) {
+                        if (t != null && t.getTagName() != null) {
+                            excludeLower.add(t.getTagName().trim().toLowerCase());
+                        }
+                    }
+                }
+                if (majorCount > 0) {
+                    String mt = majorText == null ? "" : majorText.trim();
+                    List<UserTag> part = extractTagsAiOnly(mt, new BigDecimal("0.80"), excludeLower, majorCount, 2);
+                    part.forEach(t -> {
+                        if (t != null) t.setTagType("MAJOR");
+                    });
+                    generated.addAll(part);
+                }
+            } else {
+                // 单侧模式：只使用当前模式允许的文本；若两侧都有但不是 BOTH，则按模式选一侧
+                String text = hasInterest
+                        ? (interestText == null ? "" : interestText.trim())
+                        : (majorText == null ? "" : majorText.trim());
+                BigDecimal weight = hasInterest ? new BigDecimal("0.90") : new BigDecimal("0.80");
+                List<UserTag> part = extractTagsAiOnly(text, weight, excludeLower, remaining, 2);
+                String type = hasInterest ? "INTEREST" : "MAJOR";
+                part.forEach(t -> {
+                    if (t != null) t.setTagType(type);
+                });
+                generated.addAll(part);
+            }
         }
 
         List<UserTag> all = new ArrayList<>();
@@ -225,6 +277,15 @@ public class TagService {
             userTagMapper.insert(tag);
         });
         return merged;
+    }
+
+    private String buildMajorText(String major, String majorCourses) {
+        String m = major == null ? "" : major.trim();
+        String c = majorCourses == null ? "" : majorCourses.trim();
+        if (m.isEmpty() && c.isEmpty()) return "";
+        if (m.isEmpty()) return c;
+        if (c.isEmpty()) return m;
+        return m + "；已修课程：" + c;
     }
     
     /**
@@ -246,12 +307,15 @@ public class TagService {
                 if (name == null || name.isBlank()) {
                     continue;
                 }
-                if (excludeLower != null && excludeLower.contains(name.trim().toLowerCase())) {
+                String cleaned = name.trim();
+                if (excludeLower != null && excludeLower.contains(cleaned.toLowerCase())) {
                     continue;
                 }
                 UserTag tag = new UserTag();
-                tag.setTagName(name);
-                tag.setWeight(defaultWeight);
+                tag.setTagName(cleaned);
+                // 与交互式重生成保持一致：使用 0.30–1.00 间的“稳定随机”权重，
+                // 并在 defaultWeight 附近轻微偏置
+                tag.setWeight(sampleWeight(text, cleaned, defaultWeight));
                 tags.add(tag);
             }
             if (maxCount != null && maxCount > 0 && tags.size() > maxCount) {
@@ -320,20 +384,6 @@ public class TagService {
         return tags;
     }
 
-    private String buildCombinedText(String interestDesc, String major) {
-        String combinedText = "";
-        if (interestDesc != null && !interestDesc.trim().isEmpty()) {
-            combinedText += interestDesc.trim();
-        }
-        if (major != null && !major.trim().isEmpty()) {
-            if (!combinedText.isEmpty()) {
-                combinedText += "；";
-            }
-            combinedText += major.trim();
-        }
-        return combinedText;
-    }
-
     /**
      * AI-only 抽取：最多尝试 maxAttempts 次（满足“单次改为 1-2 次”）。
      * 失败将直接抛错，禁止回退本地词库/规则。
@@ -358,7 +408,7 @@ public class TagService {
                     if (excludeLower != null && excludeLower.contains(name.trim().toLowerCase())) continue;
                     UserTag tag = new UserTag();
                     tag.setTagName(name.trim());
-                    tag.setWeight(defaultWeight);
+                    tag.setWeight(sampleWeight(text, name.trim(), defaultWeight));
                     tags.add(tag);
                 }
                 if (tags.isEmpty()) {
@@ -375,6 +425,35 @@ public class TagService {
         }
         throw last == null ? new RuntimeException("AI 标签生成失败") : last;
     }
+
+    /**
+     * 为标签生成一个 0.30-1.00 的“稳定随机”权重，并在 defaultWeight 附近轻微偏置。
+     * 目的：
+     * - 避免固定 0.8/0.9 与真实情况不符；
+     * - 同一用户同一输入下可复现（不每次都抖动）；
+     * - 仍允许用户在前端手动调整并覆盖。
+     */
+    private BigDecimal sampleWeight(String sourceText, String tagName, BigDecimal defaultWeight) {
+        String s = (sourceText == null ? "" : sourceText.trim()) + "||" + (tagName == null ? "" : tagName.trim());
+        int h = s.hashCode();
+        // 映射到 [0,1)
+        double u = (h & 0x7fffffff) / (double) Integer.MAX_VALUE;
+        // 基础随机权重 [0.30, 1.00]
+        double base = 0.30 + 0.70 * u;
+        // 以 defaultWeight 为中心做轻微偏置（最多 +/-0.10），保持“兴趣略高、专业略低”的直觉但不死板
+        double center = defaultWeight == null ? 0.60 : defaultWeight.doubleValue();
+        double biased = base * 0.8 + center * 0.2;
+        // 若标签本身在原文本中出现，略微上调（更贴合输入）
+        if (sourceText != null && tagName != null && !tagName.isBlank()) {
+            if (sourceText.toLowerCase().contains(tagName.toLowerCase())) {
+                biased = Math.min(1.0, biased + 0.05);
+            }
+        }
+        BigDecimal w = new BigDecimal(biased).setScale(2, RoundingMode.HALF_UP);
+        if (w.compareTo(new BigDecimal("0.30")) < 0) w = new BigDecimal("0.30");
+        if (w.compareTo(BigDecimal.ONE) > 0) w = BigDecimal.ONE;
+        return w;
+    }
     
     /**
      * 合并重复标签，保留最大权重
@@ -388,10 +467,20 @@ public class TagService {
                                 list -> {
                                     UserTag merged = new UserTag();
                                     merged.setTagName(list.get(0).getTagName());
-                                    merged.setWeight(list.stream()
-                                            .map(UserTag::getWeight)
-                                            .max(BigDecimal::compareTo)
-                                            .orElse(BigDecimal.ZERO));
+                                    // 以最大权重条目为准（更符合“用户更看重的标签”）
+                                    UserTag best = list.stream()
+                                            .filter(Objects::nonNull)
+                                            .max(Comparator.comparing(t -> t.getWeight() == null ? BigDecimal.ZERO : t.getWeight()))
+                                            .orElse(list.get(0));
+
+                                    merged.setWeight(best.getWeight() == null ? BigDecimal.ZERO : best.getWeight());
+                                    String type = best.getTagType();
+                                    // 兜底：若缺失 type，则按旧逻辑用权重推断
+                                    if (type == null || type.trim().isEmpty()) {
+                                        BigDecimal w = merged.getWeight() == null ? BigDecimal.ZERO : merged.getWeight();
+                                        type = w.compareTo(new BigDecimal("0.85")) >= 0 ? "INTEREST" : "MAJOR";
+                                    }
+                                    merged.setTagType(type);
                                     return merged;
                                 }
                         )
@@ -419,8 +508,31 @@ public class TagService {
                 .eq(UserTag::getUserId, userId));
         
         // 插入新标签
+        if (tags == null) {
+            return;
+        }
         tags.forEach(tag -> {
+            if (tag == null || tag.getTagName() == null || tag.getTagName().trim().isEmpty()) {
+                return;
+            }
             tag.setUserId(userId);
+            tag.setTagName(tag.getTagName().trim());
+            // 权重做兜底与裁剪，避免前端传空或越界
+            BigDecimal w = tag.getWeight() == null ? new BigDecimal("0.90") : tag.getWeight();
+            if (w.compareTo(BigDecimal.ZERO) < 0) w = BigDecimal.ZERO;
+            if (w.compareTo(BigDecimal.ONE) > 0) w = BigDecimal.ONE;
+            tag.setWeight(w);
+            // 类型兜底与裁剪（允许前端自定义专业/兴趣）
+            String type = tag.getTagType();
+            if (type == null || type.trim().isEmpty()) {
+                type = w.compareTo(new BigDecimal("0.85")) >= 0 ? "INTEREST" : "MAJOR";
+            } else {
+                type = type.trim().toUpperCase();
+                if (!"MAJOR".equals(type) && !"INTEREST".equals(type)) {
+                    type = w.compareTo(new BigDecimal("0.85")) >= 0 ? "INTEREST" : "MAJOR";
+                }
+            }
+            tag.setTagType(type);
             userTagMapper.insert(tag);
         });
     }

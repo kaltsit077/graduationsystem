@@ -9,6 +9,8 @@ export interface Topic {
   status: string
   maxApplicants: number
   currentApplicants: number
+  /** 学生端可选：当前学生与该选题的匹配度（0.30-1.00） */
+  matchScore?: number
   tags?: string[]
   createdAt?: string
   updatedAt?: string
@@ -46,6 +48,11 @@ export interface AiGeneratedTopic {
 // 获取已开放的选题列表（学生端）
 export const getOpenTopics = () => {
   return request.get<Topic[]>('/topics/open')
+}
+
+// 获取已开放的选题列表（学生端，附带匹配度）
+export const getOpenTopicsWithScore = () => {
+  return request.get<Topic[]>('/topics/open-with-score')
 }
 
 // 获取选题列表（可按状态筛选）
@@ -98,6 +105,6 @@ export interface AiGenerateTopicsParams {
 
 // 基于导师标签的 AI 选题生成（可能调用外部大模型，延迟较高，单独拉长超时时间）
 export const generateAiTopics = (data: AiGenerateTopicsParams) => {
-  return request.post<AiGeneratedTopic[]>('/topics/ai-generate', data, { timeout: 120000 })
+  return request.post<AiGeneratedTopic[]>('/topics/ai-generate', data, { timeout: 300000 })
 }
 

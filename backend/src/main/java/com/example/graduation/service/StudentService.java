@@ -31,7 +31,7 @@ public class StudentService {
      * 完善学生信息
      */
     @Transactional
-    public StudentProfile updateProfile(Long userId, String realName, String major, String grade, String interestDesc, String tagMode) {
+    public StudentProfile updateProfile(Long userId, String realName, String major, String majorCourses, String grade, String interestDesc, String tagMode) {
         if (realName != null && !realName.trim().isEmpty()) {
             User user = userMapper.selectById(userId);
             if (user != null) {
@@ -49,12 +49,14 @@ public class StudentService {
             profile = new StudentProfile();
             profile.setUserId(userId);
             profile.setMajor(major);
+            profile.setMajorCourses(majorCourses);
             profile.setGrade(grade);
             profile.setInterestDesc(interestDesc);
             profile.setTagMode(tagMode);
             studentProfileMapper.insert(profile);
         } else {
             profile.setMajor(major);
+            profile.setMajorCourses(majorCourses);
             profile.setGrade(grade);
             profile.setInterestDesc(interestDesc);
             // 若前端未传入标签模式，则保留原值；否则更新
@@ -101,6 +103,7 @@ public class StudentService {
             Long userId,
             String interestDesc,
             String major,
+            String majorCourses,
             String tagMode,
             List<UserTagResponse> pinnedTags,
             List<String> excludeTagNames,
@@ -113,11 +116,12 @@ public class StudentService {
                 }
                 UserTag tag = new UserTag();
                 tag.setTagName(t.getTagName().trim());
+                tag.setTagType(t.getTagType());
                 tag.setWeight(t.getWeight() == null ? new BigDecimal("0.90") : t.getWeight());
                 pinned.add(tag);
             }
         }
-        return tagService.regenerateStudentTags(userId, interestDesc, major, tagMode, pinned, excludeTagNames, desiredTotal);
+        return tagService.regenerateStudentTags(userId, interestDesc, major, majorCourses, tagMode, pinned, excludeTagNames, desiredTotal);
     }
 }
 

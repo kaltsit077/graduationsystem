@@ -27,8 +27,17 @@
           <el-table-column prop="fileName" label="文件名" min-width="200" />
           <el-table-column prop="status" label="状态" width="100" />
           <el-table-column prop="createdAt" label="上传时间" width="180" />
-          <el-table-column label="操作" width="120">
+          <el-table-column label="操作" width="200">
             <template #default="{ row }">
+              <el-button
+                v-if="row.fileUrl"
+                type="primary"
+                link
+                size="small"
+                @click="openFile(row.fileUrl)"
+              >
+                打开文件
+              </el-button>
               <el-button type="primary" link size="small" @click="openEvalDialog(row)">录入成绩</el-button>
             </template>
           </el-table-column>
@@ -195,6 +204,11 @@ const openEvalDialog = (row: Thesis) => {
     }
   })()
   evalDialogVisible.value = true
+}
+
+const openFile = (url: string) => {
+  if (!url) return
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 // 提交教师对论文的成绩评价

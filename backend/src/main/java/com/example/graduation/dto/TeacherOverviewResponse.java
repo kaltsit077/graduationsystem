@@ -31,5 +31,10 @@ public class TeacherOverviewResponse {
     private BigDecimal excellentRatio;
 
     private BigDecimal failRatio;
+
+    /**
+     * 学生视角下的导师匹配度（0-1），仅在学生端查询时计算。
+     */
+    private BigDecimal matchScore;
 }
 

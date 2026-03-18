@@ -9,6 +9,7 @@ export interface TeacherProfileRequest {
 
 export interface UserTag {
   tagName: string
+  tagType?: 'MAJOR' | 'INTEREST'
   weight: number
 }
 
@@ -69,13 +70,31 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // 异步化“重抽导师标签”：后端立即返回 taskId，前端轮询任务状态，最终返回 tags
 export const regenerateTeacherTags = async (data: TeacherTagRegenerateRequest) => {
-  const created = await request.post<TagRegenerateTaskCreateResponse>('/teacher/tags/regenerate', data, { timeout: 15000 })
-  const taskId = created.data?.taskId
-  if (!taskId) throw new Error('任务创建失败：缺少 taskId')
+  // 兼容两种后端返回：
+  // 1) 新版：{ data: { taskId } } -> 轮询 /regenerate/{taskId}
+  // 2) 旧版/降级：{ data: UserTag[] } -> 直接返回标签列表
+  const created = await request.post<TagRegenerateTaskCreateResponse | UserTag[] | any>('/teacher/tags/regenerate', data, {
+    timeout: 15000
+  })
+
+  if (Array.isArray(created.data)) {
+    return { ...created, data: created.data as UserTag[] }
+  }
+
+  const taskId: string | undefined = created.data?.taskId
+  if (!taskId) {
+    const tags = created.data?.tags
+    if (Array.isArray(tags)) {
+      return { ...created, data: tags as UserTag[] }
+    }
+    throw new Error('任务创建失败：缺少 taskId')
+  }
 
   const startedAt = Date.now()
-  const timeoutMs = 120000
-  const pollIntervalMs = 800
+  // 最大等待时长加长，避免 AI 慢导致频繁超时
+  const timeoutMs = 300000
+  // 统一轮询间隔：2.5s（减少请求量）
+  const pollIntervalMs = 2500
 
   while (Date.now() - startedAt < timeoutMs) {
     const statusRes = await request.get<TagRegenerateTaskStatusResponse>(`/teacher/tags/regenerate/${taskId}`, { timeout: 15000 })

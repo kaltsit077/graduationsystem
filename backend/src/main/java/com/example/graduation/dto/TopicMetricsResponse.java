@@ -12,5 +12,7 @@ public class TopicMetricsResponse {
     private Integer totalStudents;
     private BigDecimal excellentRatio;
     private BigDecimal failRatio;
+    /** 学生满意度均分（来自 thesis_evaluation.student_score，0-100） */
+    private BigDecimal avgStudentScore;
 }
 

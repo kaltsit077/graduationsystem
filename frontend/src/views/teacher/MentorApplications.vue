@@ -137,7 +137,6 @@ import {
   type MentorApplication
 } from '@/api/mentorApplication'
 import { getTopics, type Topic } from '@/api/topic'
-import request from '@/api/request'
 
 interface MentorApplicationView extends MentorApplication {
   studentName?: string
@@ -186,27 +185,9 @@ const loadData = async () => {
   loading.value = true
   try {
     const res = await getTeacherPendingMentorApplications()
-    const list: MentorApplication[] = res.data || []
-
-    const enriched: MentorApplicationView[] = []
-    for (const item of list) {
-      let studentName: string | undefined
-      try {
-        const userRes = await request.get(`/admin/users/students`)
-        const allStudents = userRes.data || []
-        const found = allStudents.find((s: any) => s.id === item.studentId)
-        if (found) {
-          studentName = found.realName || found.username
-        }
-      } catch {
-        // ignore
-      }
-      enriched.push({
-        ...item,
-        studentName
-      })
-    }
-    applications.value = enriched
+    const list: MentorApplicationView[] = (res.data as any) || []
+    // 后端已直接返回 studentName，无需在前端反复拉取全量学生列表
+    applications.value = list
   } catch (err: any) {
     ElMessage.error(err?.message || '加载拜师申请失败')
   } finally {

@@ -58,12 +58,7 @@ public class TeacherService {
             }
             teacherProfileMapper.updateById(profile);
         }
-        
-        // 自动生成标签（研究方向标签权重0.9）
-        if (researchDirection != null) {
-            tagService.generateTeacherTags(userId, researchDirection);
-        }
-        
+
         return profile;
     }
     
@@ -111,12 +106,23 @@ public class TeacherService {
                 }
                 UserTag tag = new UserTag();
                 tag.setTagName(t.getTagName().trim());
+                tag.setTagType(t.getTagType());
                 tag.setWeight(t.getWeight());
                 pinned.add(tag);
             }
         }
-        // 复用学生标签重生成逻辑：只传入“兴趣描述”一项，这里用导师的研究方向文本替代。
-        return tagService.regenerateStudentTags(userId, researchDirection, null, "INTEREST", pinned, excludeTagNames, desiredTotal);
+        // 复用学生标签重生成逻辑：
+        // interestDesc 使用导师研究方向，专业与主修课程为空，标签模式固定为 INTEREST
+        return tagService.regenerateStudentTags(
+                userId,
+                researchDirection,
+                null,
+                null,
+                "INTEREST",
+                pinned,
+                excludeTagNames,
+                desiredTotal
+        );
     }
 }
 

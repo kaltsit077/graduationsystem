@@ -1,25 +1,107 @@
 <template>
-  <div class="topics-container">
-    <el-card>
+  <div class="topics-container page-container page-scope">
+    <el-card class="filter-card" shadow="never">
+      <div class="filter-header">
+        <div class="filter-title">
+          <div class="page-title">选题中心</div>
+            
+        </div>
+        <el-button type="primary" plain @click="refreshTopics" :loading="loading">刷新</el-button>
+      </div>
+      <el-form class="filter-form" :model="filters" label-position="top" @submit.prevent>
+        <el-row :gutter="12">
+          <el-col :xs="24" :sm="12" :md="10">
+            <el-form-item label="关键词">
+              <el-input
+                v-model="filters.keyword"
+                placeholder="标题 / 标签"
+                clearable
+                @keyup.enter="refreshTopics"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="8">
+            <el-form-item label="导师">
+              <el-input
+                v-model="filters.teacher"
+                placeholder="输入导师姓名"
+                clearable
+                @keyup.enter="refreshTopics"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="24" :md="6" class="filter-actions-col">
+            <el-form-item label=" ">
+              <div class="filter-actions">
+                <el-button type="primary" @click="refreshTopics">搜索</el-button>
+                <el-button @click="resetFilters">重置</el-button>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </el-form>
+    </el-card>
+
+    <el-card class="page-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <span>选题中心</span>
-          <el-button type="primary" @click="refreshTopics">刷新</el-button>
+          <span class="table-title">选题列表</span>
+          <span class="table-meta text-muted">共 {{ filteredTopics.length }} 条</span>
         </div>
       </template>
 
-      <el-table :data="topics" style="width: 100%" v-loading="loading">
+      <el-table
+        :data="filteredTopics"
+        style="width: 100%"
+        v-loading="loading"
+        stripe
+        size="large"
+        table-layout="fixed"
+      >
         <el-table-column prop="title" label="选题标题" min-width="200" />
-        <el-table-column prop="description" label="描述" min-width="300" show-overflow-tooltip />
         <el-table-column prop="teacherName" label="导师" width="120" />
+        <el-table-column label="标签" min-width="220">
+          <template #default="{ row }">
+            <div v-if="row.tags && row.tags.length" class="tag-list">
+              <el-tag
+                v-for="tag in row.tags.slice(0, 4)"
+                :key="tag"
+                size="small"
+                type="info"
+                class="tag-item"
+              >
+                {{ tag }}
+              </el-tag>
+              <el-tag v-if="row.tags.length > 4" size="small" effect="plain" class="tag-more">
+                +{{ row.tags.length - 4 }}
+              </el-tag>
+            </div>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="matchScore" label="匹配度" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="typeof row.matchScore === 'number'" :type="row.matchScore >= 0.75 ? 'success' : row.matchScore >= 0.6 ? 'warning' : 'info'">
+              {{ (row.matchScore * 100).toFixed(0) }}%
+            </el-tag>
+            <span v-else style="color: #909399">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="currentApplicants" label="已申请人数" width="120" />
         <el-table-column prop="maxApplicants" label="最大人数" width="100" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="viewTopic(row)">查看</el-button>
-            <el-button type="success" size="small" @click="applyTopic(row)" :disabled="row.currentApplicants >= row.maxApplicants">
-              申请
-            </el-button>
+            <div class="table-actions">
+              <el-button type="primary" link @click="viewTopic(row)">查看</el-button>
+              <el-button
+                type="success"
+                size="small"
+                @click="applyTopic(row)"
+                :disabled="row.currentApplicants >= row.maxApplicants"
+              >
+                申请
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -29,8 +111,9 @@
     <AppDialog
       v-model="dialogVisible"
       title="选题详情"
-      width="720px"
+      width="920px"
       :close-on-click-modal="false"
+      body-max-height="70vh"
     >
       <div v-if="selectedTopic" class="topic-dialog-body">
         <div class="topic-dialog-main">
@@ -97,7 +180,7 @@
       <template #footer>
         <div class="topic-dialog-footer">
           <span class="topic-footer-tip">
-            提交前可先与导师在“协作中心”中沟通确认。
+            可以多看看其他课题，找到最适合自己的。
           </span>
           <div class="topic-footer-actions">
             <el-button @click="dialogVisible = false">关闭</el-button>
@@ -111,8 +194,9 @@
     <AppDialog
       v-model="applyDialogVisible"
       title="提交申请"
-      width="640px"
+      width="820px"
       :close-on-click-modal="false"
+      body-max-height="70vh"
     >
       <div class="apply-dialog-body">
         <div class="apply-dialog-summary" v-if="selectedTopic">
@@ -156,7 +240,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import AppDialog from '@/components/AppDialog.vue'
-import { getOpenTopics, type Topic } from '@/api/topic'
+import { getOpenTopicsWithScore, type Topic } from '@/api/topic'
 import { submitApplication } from '@/api/application'
 
 const loading = ref(false)
@@ -166,11 +250,43 @@ const selectedTopic = ref<Topic | null>(null)
 const applyDialogVisible = ref(false)
 const submitting = ref(false)
 
+const filters = ref({
+  keyword: '',
+  teacher: ''
+})
+
+const resetFilters = () => {
+  filters.value.keyword = ''
+  filters.value.teacher = ''
+}
+
 const applyForm = ref({
   remark: ''
 })
 
 const remarkLength = computed(() => applyForm.value.remark.trim().length)
+
+const filteredTopics = computed(() => {
+  const kw = filters.value.keyword.trim().toLowerCase()
+  const teacher = filters.value.teacher.trim().toLowerCase()
+
+  return topics.value.filter((t) => {
+    const title = (t.title || '').toLowerCase()
+    const desc = (t.description || '').toLowerCase()
+    const tTeacher = (t.teacherName || '').toLowerCase()
+    const tags = (t.tags || []).map((x) => String(x).toLowerCase())
+
+    const kwMatch =
+      !kw ||
+      title.includes(kw) ||
+      desc.includes(kw) ||
+      tags.some((x) => x.includes(kw))
+
+    const teacherMatch = !teacher || tTeacher.includes(teacher)
+
+    return kwMatch && teacherMatch
+  })
+})
 
 onMounted(() => {
   loadTopics()
@@ -179,8 +295,14 @@ onMounted(() => {
 const loadTopics = async () => {
   loading.value = true
   try {
-    const res = await getOpenTopics()
-    topics.value = res.data || []
+    const res = await getOpenTopicsWithScore()
+    const list = res.data || []
+    // 学生端默认按匹配度从高到低展示，便于体验“推荐/匹配”效果；无分数的排后
+    topics.value = [...list].sort((a, b) => {
+      const sa = typeof a.matchScore === 'number' ? a.matchScore : -1
+      const sb = typeof b.matchScore === 'number' ? b.matchScore : -1
+      return sb - sa
+    })
   } catch (error) {
     ElMessage.error('加载选题失败')
   } finally {
@@ -231,15 +353,82 @@ const submitApply = async () => {
 <style scoped>
 .topics-container {
   max-width: 1400px;
-  margin: 0 auto;
+}
+
+.page-card {
+  border-radius: 12px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
+.table-title {
+  font-weight: 600;
+  color: #303133;
+}
+
+.table-meta {
+  font-size: 12px;
+}
+
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.filter-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+
+.filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.filter-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.filter-form :deep(.el-form-item) {
+  margin-bottom: 10px;
+}
+
+.filter-actions-col :deep(.el-form-item__content) {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.filter-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-item {
+  margin: 0;
+}
+
+.tag-more {
+  color: #606266;
+}
 
 .topic-dialog-body {
   display: flex;
@@ -375,6 +564,30 @@ const submitApply = async () => {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .topic-dialog-body {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .topic-dialog-side {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid #f0f0f0;
+    padding-top: 12px;
+  }
+
+  .topic-dialog-footer {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+  }
+
+  .apply-dialog-body {
+    flex-direction: column;
+  }
 }
 </style>
 

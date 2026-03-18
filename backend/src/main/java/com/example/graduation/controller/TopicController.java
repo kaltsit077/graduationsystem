@@ -14,6 +14,7 @@ import com.example.graduation.entity.User;
 import com.example.graduation.mapper.TopicMapper;
 import com.example.graduation.mapper.TopicTagMapper;
 import com.example.graduation.mapper.UserMapper;
+import com.example.graduation.service.ApplicationService;
 import com.example.graduation.service.AiTopicService;
 import com.example.graduation.service.TopicService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,6 +41,9 @@ public class TopicController {
     @Autowired
     private UserMapper userMapper;
 
+    @Autowired
+    private ApplicationService applicationService;
+
     @Autowired(required = false)
     private AiTopicService aiTopicService;
     
@@ -57,6 +61,28 @@ public class TopicController {
     public ApiResponse<List<TopicResponse>> getOpenTopics() {
         List<Topic> topics = topicService.getOpenTopics();
         List<TopicResponse> responses = convertToResponseList(topics);
+        return ApiResponse.success(responses);
+    }
+
+    /**
+     * 获取已开放的选题列表（学生端，附带当前学生的匹配度）。
+     * matchScore 基于“学生标签 ↔ 选题文本 + 学生标签 ↔ 导师画像”的融合算法计算。
+     */
+    @GetMapping("/open-with-score")
+    public ApiResponse<List<TopicResponse>> getOpenTopicsWithScore(HttpServletRequest request) {
+        Long studentId = getCurrentUserId(request);
+        List<Topic> topics = topicService.getOpenTopics();
+        List<TopicResponse> responses = convertToResponseList(topics);
+        for (int i = 0; i < topics.size(); i++) {
+            Topic t = topics.get(i);
+            TopicResponse r = responses.get(i);
+            try {
+                r.setMatchScore(applicationService.calculateMatchScore(t, studentId));
+            } catch (Exception e) {
+                // 匹配度仅作为推荐辅助信息，计算失败时不影响列表加载
+                r.setMatchScore(null);
+            }
+        }
         return ApiResponse.success(responses);
     }
     
@@ -203,6 +229,13 @@ public class TopicController {
             requestDto = new AiGenerateTopicsRequest();
             requestDto.setCount(5);
         }
+
+        // 期望数量（去重过滤后尽量返回该数量）
+        int desired = requestDto.getCount() == null ? 5 : Math.max(1, Math.min(10, requestDto.getCount()));
+        // 为了提高“通过去重阈值”的数量，先多生成一些候选再过滤（最多 20）
+        int preGenerate = Math.min(20, Math.max(desired, desired * 3));
+        requestDto.setCount(preGenerate);
+
         List<AiTopicService.CandidateTopic> candidates = aiTopicService.generateTopicsForTeacher(teacherId, requestDto);
         List<AiGeneratedTopicResponse> responses = candidates.stream().map(c -> {
             TopicService.DuplicateCheckResult check = topicService.checkDuplicate(null, c.getTitle(), c.getDescription());
@@ -214,7 +247,9 @@ public class TopicController {
             dto.setSimilarTopicTitle(check.getSimilarTopicTitle());
             dto.setPassed(check.isPassed());
             return dto;
-        }).filter(AiGeneratedTopicResponse::isPassed).collect(Collectors.toList());
+        }).filter(AiGeneratedTopicResponse::isPassed)
+                .limit(desired)
+                .collect(Collectors.toList());
 
         return ApiResponse.success(responses);
     }

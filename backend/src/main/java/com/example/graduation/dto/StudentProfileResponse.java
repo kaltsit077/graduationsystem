@@ -10,6 +10,7 @@ public class StudentProfileResponse {
     private String username;
     private String realName;
     private String major;
+    private String majorCourses;
     private String grade;
     private String interestDesc;
     /**

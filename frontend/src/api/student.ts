@@ -3,6 +3,7 @@ import request from './request'
 export interface StudentProfileRequest {
   realName?: string
   major?: string
+  majorCourses?: string
   grade?: string
   interestDesc?: string
   // 标签生成模式：MAJOR / INTEREST / BOTH
@@ -11,6 +12,7 @@ export interface StudentProfileRequest {
 
 export interface UserTag {
   tagName: string
+  tagType?: 'MAJOR' | 'INTEREST'
   weight: number
 }
 
@@ -19,6 +21,7 @@ export interface StudentProfileResponse {
   username?: string
   realName?: string
   major?: string
+  majorCourses?: string
   grade?: string
   interestDesc?: string
   tagMode?: 'MAJOR' | 'INTEREST' | 'BOTH'
@@ -48,6 +51,7 @@ export const updateStudentTags = (tags: UserTag[]) => {
 export interface TagRegenerateRequest {
   interestDesc?: string
   major?: string
+  majorCourses?: string
   tagMode?: 'MAJOR' | 'INTEREST' | 'BOTH'
   pinnedTags?: UserTag[]
   excludeTagNames?: string[]
@@ -68,13 +72,31 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // 异步化“重抽标签”：后端立即返回 taskId，前端轮询任务状态，最终返回 tags
 export const regenerateStudentTags = async (data: TagRegenerateRequest) => {
-  const created = await request.post<TagRegenerateTaskCreateResponse>('/student/tags/regenerate', data, { timeout: 15000 })
-  const taskId = created.data?.taskId
-  if (!taskId) throw new Error('任务创建失败：缺少 taskId')
+  // 兼容两种后端返回：
+  // 1) 新版：{ data: { taskId } } -> 轮询 /regenerate/{taskId}
+  // 2) 旧版/降级：{ data: UserTag[] } -> 直接返回标签列表
+  const created = await request.post<TagRegenerateTaskCreateResponse | UserTag[] | any>('/student/tags/regenerate', data, {
+    timeout: 15000
+  })
+
+  if (Array.isArray(created.data)) {
+    return { ...created, data: created.data as UserTag[] }
+  }
+
+  const taskId: string | undefined = created.data?.taskId
+  if (!taskId) {
+    const tags = created.data?.tags
+    if (Array.isArray(tags)) {
+      return { ...created, data: tags as UserTag[] }
+    }
+    throw new Error('任务创建失败：缺少 taskId')
+  }
 
   const startedAt = Date.now()
-  const timeoutMs = 120000
-  const pollIntervalMs = 800
+  // 最大等待时长加长，避免 AI 慢导致频繁超时
+  const timeoutMs = 300000
+  // 统一轮询间隔：2.5s（减少请求量）
+  const pollIntervalMs = 2500
 
   while (Date.now() - startedAt < timeoutMs) {
     const statusRes = await request.get<TagRegenerateTaskStatusResponse>(`/student/tags/regenerate/${taskId}`, { timeout: 15000 })
@@ -92,7 +114,6 @@ export const regenerateStudentTags = async (data: TagRegenerateRequest) => {
   throw new Error('AI 标签生成超时，请稍后重试')
 }
 
-// 学生修改自己的登录密码
 export const changeStudentPassword = (oldPassword: string, newPassword: string) => {
   return request.post<void>('/student/change-password', { oldPassword, newPassword })
 }

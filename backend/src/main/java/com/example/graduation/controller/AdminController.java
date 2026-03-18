@@ -8,13 +8,18 @@ import com.example.graduation.dto.AdminUserListItem;
 import com.example.graduation.dto.MonitorStatusResponse;
 import com.example.graduation.dto.SelectionSettingRequest;
 import com.example.graduation.dto.SelectionSettingResponse;
+import com.example.graduation.dto.TeacherLoadItemResponse;
 import com.example.graduation.dto.TopicReviewRequest;
 import com.example.graduation.dto.TopicResponse;
 import com.example.graduation.dto.UserCreateRequest;
 import com.example.graduation.entity.SystemSetting;
+import com.example.graduation.entity.TeacherProfile;
 import com.example.graduation.entity.Topic;
 import com.example.graduation.entity.TopicReview;
 import com.example.graduation.entity.User;
+import com.example.graduation.mapper.TeacherProfileMapper;
+import com.example.graduation.mapper.TopicApplicationMapper;
+import com.example.graduation.mapper.TopicMapper;
 import com.example.graduation.mapper.TopicTagMapper;
 import com.example.graduation.mapper.UserMapper;
 import com.example.graduation.service.SystemSettingService;
@@ -62,6 +67,15 @@ public class AdminController {
     
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private TopicMapper topicMapper;
+
+    @Autowired
+    private TeacherProfileMapper teacherProfileMapper;
+
+    @Autowired
+    private TopicApplicationMapper topicApplicationMapper;
 
     @Autowired
     private DataSource dataSource;
@@ -291,6 +305,48 @@ public class AdminController {
         List<AdminUserListItem> result = new ArrayList<>();
         for (User u : list) {
             result.add(toListItem(u));
+        }
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 导师负荷概览：当前带学生数 / 最大可带 / 开放选题数 / 总选题数
+     */
+    @GetMapping("/teacher-load")
+    public ApiResponse<List<TeacherLoadItemResponse>> getTeacherLoad() {
+        List<User> teachers = userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getRole, Role.TEACHER)
+                        .eq(User::getStatus, 1)
+                        .orderByAsc(User::getId)
+        );
+        List<TeacherLoadItemResponse> result = new ArrayList<>();
+        for (User t : teachers) {
+            TeacherLoadItemResponse item = new TeacherLoadItemResponse();
+            item.setTeacherId(t.getId());
+            item.setRealName(t.getRealName());
+
+            TeacherProfile profile = teacherProfileMapper.selectOne(
+                    new LambdaQueryWrapper<TeacherProfile>().eq(TeacherProfile::getUserId, t.getId())
+            );
+            item.setMaxStudents(profile != null ? profile.getMaxStudentCount() : 10);
+
+            Long openTopics = topicMapper.selectCount(
+                    new LambdaQueryWrapper<Topic>()
+                            .eq(Topic::getTeacherId, t.getId())
+                            .eq(Topic::getStatus, Topic.TopicStatus.OPEN)
+            );
+            Long totalTopics = topicMapper.selectCount(
+                    new LambdaQueryWrapper<Topic>()
+                            .eq(Topic::getTeacherId, t.getId())
+            );
+            item.setOpenTopics(openTopics != null ? openTopics.intValue() : 0);
+            item.setTotalTopics(totalTopics != null ? totalTopics.intValue() : 0);
+
+            Long students = topicApplicationMapper.countDistinctApprovedStudentsByTeacher(t.getId());
+            item.setCurrentStudents(students != null ? students.intValue() : 0);
+
+            result.add(item);
         }
         return ApiResponse.success(result);
     }

@@ -72,6 +72,7 @@ public class TeacherController {
         List<UserTagResponse> tagResponses = tags.stream().map(tag -> {
             UserTagResponse tagResponse = new UserTagResponse();
             tagResponse.setTagName(tag.getTagName());
+            tagResponse.setTagType(tag.getTagType());
             tagResponse.setWeight(tag.getWeight());
             return tagResponse;
         }).collect(Collectors.toList());
@@ -113,6 +114,7 @@ public class TeacherController {
         List<UserTagResponse> tagResponses = tags.stream().map(tag -> {
             UserTagResponse tagResponse = new UserTagResponse();
             tagResponse.setTagName(tag.getTagName());
+            tagResponse.setTagType(tag.getTagType());
             tagResponse.setWeight(tag.getWeight());
             return tagResponse;
         }).collect(Collectors.toList());
@@ -132,6 +134,7 @@ public class TeacherController {
         List<UserTagResponse> responses = tags.stream().map(tag -> {
             UserTagResponse response = new UserTagResponse();
             response.setTagName(tag.getTagName());
+            response.setTagType(tag.getTagType());
             response.setWeight(tag.getWeight());
             return response;
         }).collect(Collectors.toList());
@@ -156,7 +159,11 @@ public class TeacherController {
                 }
                 UserTag tag = new UserTag();
                 tag.setTagName(t.getTagName().trim());
-                tag.setWeight(t.getWeight());
+                tag.setTagType(t.getTagType());
+                java.math.BigDecimal w = t.getWeight() == null ? new java.math.BigDecimal("0.90") : t.getWeight();
+                if (w.compareTo(java.math.BigDecimal.ZERO) < 0) w = java.math.BigDecimal.ZERO;
+                if (w.compareTo(java.math.BigDecimal.ONE) > 0) w = java.math.BigDecimal.ONE;
+                tag.setWeight(w);
                 tags.add(tag);
             }
         }
@@ -165,6 +172,7 @@ public class TeacherController {
         List<UserTagResponse> responses = tags.stream().map(tag -> {
             UserTagResponse response = new UserTagResponse();
             response.setTagName(tag.getTagName());
+            response.setTagType(tag.getTagType());
             response.setWeight(tag.getWeight());
             return response;
         }).collect(Collectors.toList());

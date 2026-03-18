@@ -2,6 +2,8 @@ package com.example.graduation.service.impl;
 
 import com.example.graduation.entity.Topic;
 import com.example.graduation.entity.UserTag;
+import com.example.graduation.entity.TeacherProfile;
+import com.example.graduation.mapper.TeacherProfileMapper;
 import com.example.graduation.service.EmbeddingService;
 import com.example.graduation.service.MatchService;
 import com.example.graduation.service.TagService;
@@ -30,6 +32,9 @@ public class MatchServiceImpl implements MatchService {
     @Autowired(required = false)
     private EmbeddingService embeddingService;
 
+    @Autowired
+    private TeacherProfileMapper teacherProfileMapper;
+
     @Override
     public BigDecimal calculateMatchScore(Topic topic, Long studentId) {
         if (topic == null || studentId == null) {
@@ -37,8 +42,8 @@ public class MatchServiceImpl implements MatchService {
         }
 
         // 获取学生标签
-        List<UserTag> tags = tagService.getUserTags(studentId);
-        if (tags == null || tags.isEmpty()) {
+        List<UserTag> studentTags = tagService.getUserTags(studentId);
+        if (studentTags == null || studentTags.isEmpty()) {
             // 没有标签时返回中等匹配度
             return new BigDecimal("0.50");
         }
@@ -55,17 +60,22 @@ public class MatchServiceImpl implements MatchService {
             return new BigDecimal("0.50");
         }
 
-        // 1. 基于标签权重重合度的匹配（0-1）
-        BigDecimal overlap = calculateOverlapScore(tags, text);
+        // 1. 学生标签 ↔ 选题文本：基于标签权重重合度 + 语义相似度
+        BigDecimal overlap = calculateOverlapScore(studentTags, text);
+        BigDecimal semantic = calculateSemanticSimilarity(topic, studentTags);
 
-        // 2. 语义向量相似度（0-1）：优先使用 EmbeddingService，失败时回退到标签余弦
-        BigDecimal semantic = calculateSemanticSimilarity(topic, tags);
+        // 2. 学生标签 ↔ 导师画像：基于标签/画像文本的语义相似度
+        BigDecimal teacherSimilarity = calculateTeacherStudentSimilarity(topic, studentTags);
 
-        // 3. 融合两个得分（都在 0-1 区间），再统一映射到 0.30-1.00。
-        //    当前采用简单线性融合：alpha * overlap + (1 - alpha) * semantic
-        BigDecimal alpha = new BigDecimal("0.6"); // 权重可后续迁移到配置
+        // 3. 融合三个得分（都在 0-1 区间），再统一映射到 0.30-1.00。
+        //    当前采用简单线性融合：
+        //    final = 0.5 * (0.6 * overlap + 0.4 * semantic) + 0.5 * teacherSimilarity
+        BigDecimal alpha = new BigDecimal("0.6");
         BigDecimal oneMinusAlpha = BigDecimal.ONE.subtract(alpha);
-        BigDecimal fused = overlap.multiply(alpha).add(semantic.multiply(oneMinusAlpha));
+        BigDecimal topicSide = overlap.multiply(alpha).add(semantic.multiply(oneMinusAlpha));
+
+        BigDecimal half = new BigDecimal("0.5");
+        BigDecimal fused = topicSide.multiply(half).add(teacherSimilarity.multiply(half));
 
         // 映射到 [0.30, 1.00]
         BigDecimal base = new BigDecimal("0.30");
@@ -130,30 +140,9 @@ public class MatchServiceImpl implements MatchService {
             }
             String topicText = topicSb.toString();
 
-            float[] vStudent = embeddingService.embedText(studentText);
-            float[] vTopic = embeddingService.embedText(topicText);
-            if (vStudent != null && vTopic != null
-                    && vStudent.length == vTopic.length
-                    && vStudent.length > 0) {
-                double dot = 0.0;
-                double normS = 0.0;
-                double normT = 0.0;
-                for (int i = 0; i < vStudent.length; i++) {
-                    float sv = vStudent[i];
-                    float tv = vTopic[i];
-                    dot += sv * tv;
-                    normS += sv * sv;
-                    normT += tv * tv;
-                }
-                if (dot != 0.0 && normS != 0.0 && normT != 0.0) {
-                    double cosine = dot / (Math.sqrt(normS) * Math.sqrt(normT));
-                    if (cosine < 0.0) {
-                        cosine = 0.0;
-                    } else if (cosine > 1.0) {
-                        cosine = 1.0;
-                    }
-                    return new BigDecimal(cosine).setScale(4, RoundingMode.HALF_UP);
-                }
+            BigDecimal cosine = embedAndCosine(studentText, topicText);
+            if (cosine != null) {
+                return cosine;
             }
         }
 
@@ -166,6 +155,92 @@ public class MatchServiceImpl implements MatchService {
             fallbackText.append(topic.getDescription());
         }
         return calculateTagCosineSimilarity(tags, fallbackText.toString().toLowerCase());
+    }
+
+    /**
+     * 学生标签 ↔ 导师画像的语义相似度（0-1）：
+     * - 若 EmbeddingService 可用，则基于“学生标签文本”和“导师研究方向 + 导师标签”的向量余弦相似度；
+     * - 若不可用或教师无画像，则返回 0.5 作为中性值。
+     */
+    private BigDecimal calculateTeacherStudentSimilarity(Topic topic, List<UserTag> studentTags) {
+        if (topic == null || topic.getTeacherId() == null) {
+            return new BigDecimal("0.50");
+        }
+        Long teacherId = topic.getTeacherId();
+
+        List<UserTag> teacherTags = tagService.getUserTags(teacherId);
+        TeacherProfile profile = teacherProfileMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<TeacherProfile>()
+                        .eq(TeacherProfile::getUserId, teacherId)
+        );
+
+        String studentText = studentTags.stream()
+                .filter(t -> t != null && t.getTagName() != null)
+                .map(UserTag::getTagName)
+                .collect(Collectors.joining("，"));
+
+        StringBuilder teacherSb = new StringBuilder();
+        if (profile != null && profile.getResearchDirection() != null) {
+            teacherSb.append(profile.getResearchDirection()).append(' ');
+        }
+        if (teacherTags != null && !teacherTags.isEmpty()) {
+            String tagText = teacherTags.stream()
+                    .filter(t -> t != null && t.getTagName() != null)
+                    .map(UserTag::getTagName)
+                    .collect(Collectors.joining("，"));
+            teacherSb.append(tagText);
+        }
+        String teacherText = teacherSb.toString().trim();
+        if (teacherText.isEmpty()) {
+            return new BigDecimal("0.50");
+        }
+
+        if (embeddingService != null) {
+            BigDecimal cosine = embedAndCosine(studentText, teacherText);
+            if (cosine != null) {
+                return cosine;
+            }
+        }
+
+        // 若向量服务不可用，则简单回退为 0.5（中性），避免影响整体分布
+        return new BigDecimal("0.50");
+    }
+
+    /**
+     * 通用的“两个文本 → 向量 → 余弦相似度(0-1)”工具方法。
+     */
+    private BigDecimal embedAndCosine(String textA, String textB) {
+        if (embeddingService == null) {
+            return null;
+        }
+        if ((textA == null || textA.isBlank()) || (textB == null || textB.isBlank())) {
+            return null;
+        }
+        float[] vA = embeddingService.embedText(textA);
+        float[] vB = embeddingService.embedText(textB);
+        if (vA == null || vB == null || vA.length == 0 || vA.length != vB.length) {
+            return null;
+        }
+        double dot = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+        for (int i = 0; i < vA.length; i++) {
+            float av = vA[i];
+            float bv = vB[i];
+            dot += av * bv;
+            normA += av * av;
+            normB += bv * bv;
+        }
+        if (dot == 0.0 || normA == 0.0 || normB == 0.0) {
+            return null;
+        }
+        double cosine = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+        if (cosine < 0.0) {
+            cosine = 0.0;
+        } else if (cosine > 1.0) {
+            cosine = 1.0;
+        }
+        return new BigDecimal(cosine).setScale(4, RoundingMode.HALF_UP);
     }
 
     /**

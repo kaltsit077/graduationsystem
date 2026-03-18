@@ -123,12 +123,14 @@ public class MentorApplicationController {
      */
     @GetMapping("/teachers/overview")
     public ApiResponse<List<TeacherOverviewResponse>> getTeacherOverviewList(HttpServletRequest request) {
-        // 只要求已登录，角色不限（学生用得最多）
+        // 只要求已登录，角色不限（学生用得最多）；若为学生则传入 studentId 以计算匹配度
         String role = getCurrentUserRole(request);
         if (role == null) {
             return ApiResponse.error("未登录");
         }
-        List<TeacherOverviewResponse> list = mentorApplicationService.getTeacherOverviewList();
+        Long currentUserId = getCurrentUserId(request);
+        Long studentId = "STUDENT".equalsIgnoreCase(role) ? currentUserId : null;
+        List<TeacherOverviewResponse> list = mentorApplicationService.getTeacherOverviewList(studentId);
         return ApiResponse.success(list);
     }
 }

@@ -67,6 +67,7 @@ public class StudentController {
         }
         if (profile != null) {
             response.setMajor(profile.getMajor());
+            response.setMajorCourses(profile.getMajorCourses());
             response.setGrade(profile.getGrade());
             response.setInterestDesc(profile.getInterestDesc());
             response.setTagMode(profile.getTagMode());
@@ -75,6 +76,7 @@ public class StudentController {
         List<UserTagResponse> tagResponses = tags.stream().map(tag -> {
             UserTagResponse tagResponse = new UserTagResponse();
             tagResponse.setTagName(tag.getTagName());
+            tagResponse.setTagType(tag.getTagType());
             tagResponse.setWeight(tag.getWeight());
             return tagResponse;
         }).collect(Collectors.toList());
@@ -96,6 +98,7 @@ public class StudentController {
                 userId,
                 requestDto.getRealName(),
                 requestDto.getMajor(),
+                requestDto.getMajorCourses(),
                 requestDto.getGrade(),
                 requestDto.getInterestDesc(),
                 requestDto.getTagMode()
@@ -111,6 +114,7 @@ public class StudentController {
             response.setRealName(user.getRealName());
         }
         response.setMajor(profile.getMajor());
+        response.setMajorCourses(profile.getMajorCourses());
         response.setGrade(profile.getGrade());
         response.setInterestDesc(profile.getInterestDesc());
         response.setTagMode(profile.getTagMode());
@@ -118,6 +122,7 @@ public class StudentController {
         List<UserTagResponse> tagResponses = tags.stream().map(tag -> {
             UserTagResponse tagResponse = new UserTagResponse();
             tagResponse.setTagName(tag.getTagName());
+            tagResponse.setTagType(tag.getTagType());
             tagResponse.setWeight(tag.getWeight());
             return tagResponse;
         }).collect(Collectors.toList());
@@ -149,6 +154,7 @@ public class StudentController {
         List<UserTagResponse> responses = tags.stream().map(tag -> {
             UserTagResponse response = new UserTagResponse();
             response.setTagName(tag.getTagName());
+            response.setTagType(tag.getTagType());
             response.setWeight(tag.getWeight());
             return response;
         }).collect(Collectors.toList());
@@ -173,7 +179,11 @@ public class StudentController {
                 }
                 UserTag tag = new UserTag();
                 tag.setTagName(t.getTagName().trim());
-                tag.setWeight(t.getWeight() == null ? new BigDecimal("0.90") : t.getWeight());
+                tag.setTagType(t.getTagType());
+                BigDecimal w = t.getWeight() == null ? new BigDecimal("0.90") : t.getWeight();
+                if (w.compareTo(BigDecimal.ZERO) < 0) w = BigDecimal.ZERO;
+                if (w.compareTo(BigDecimal.ONE) > 0) w = BigDecimal.ONE;
+                tag.setWeight(w);
                 tags.add(tag);
             }
         }
@@ -182,6 +192,7 @@ public class StudentController {
         List<UserTagResponse> responses = tags.stream().map(tag -> {
             UserTagResponse response = new UserTagResponse();
             response.setTagName(tag.getTagName());
+            response.setTagType(tag.getTagType());
             response.setWeight(tag.getWeight());
             return response;
         }).collect(Collectors.toList());
@@ -203,6 +214,7 @@ public class StudentController {
                         userId,
                         dto.getInterestDesc(),
                         dto.getMajor(),
+                        dto.getMajorCourses(),
                         dto.getTagMode(),
                         dto.getPinnedTags(),
                         dto.getExcludeTagNames(),

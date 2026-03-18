@@ -60,7 +60,6 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAdminPendingChangeRequests, submitAdminChangeDecision, type ChangeRequest, type Decision } from '@/api/changeRequest'
-import { getMonitorStatus } from '@/api/admin'
 import request from '@/api/request'
 
 interface TeacherLoadItem {
@@ -84,15 +83,14 @@ const loadingLoad = ref(false)
 const changeRequests = ref<ChangeRequestView[]>([])
 const loadingChanges = ref(false)
 
-// TODO: 后端尚未提供专门的导师负荷接口，这里暂时用占位数据或通过监控接口补充
 const loadTeacherLoad = async () => {
   loadingLoad.value = true
   try {
-    // 这里调用现有监控接口仅作为占位示例；实际项目中可改为专门的 /admin/teacher-load 接口
-    await getMonitorStatus()
-    teacherLoad.value = []
+    const res = await request.get('/admin/teacher-load')
+    teacherLoad.value = res.data || []
   } catch {
     teacherLoad.value = []
+    ElMessage.error('加载导师负荷数据失败')
   } finally {
     loadingLoad.value = false
   }

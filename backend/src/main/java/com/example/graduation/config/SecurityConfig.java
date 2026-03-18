@@ -72,6 +72,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(registry -> registry
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error", "/api/ping").permitAll()
+                        // 上传的静态资源（背景图等）需要可直接访问（浏览器加载图片不会带 Authorization）
+                        .requestMatchers("/uploads/**").permitAll()
                         // 先保护 me，再放行 auth 下其它接口（兼容可能的路径细微差异，比如尾部 /）
                         .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
