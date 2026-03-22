@@ -25,17 +25,18 @@ services:
       - ./ai-embedding/logs:/app/logs
     networks:
       - graduation-network
-    # 可选：健康检查
+    # 健康检查（slim 镜像无 curl，用 Python 请求 /health）
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()\""]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
-  # MySQL 数据库服务
+  # MySQL 数据库服务（国内拉不下 Docker Hub 时在 .env 设置：
+  # MYSQL_IMAGE=docker.m.daocloud.io/library/mysql:8.0）
   mysql:
-    image: mysql:8.0
+    image: ${MYSQL_IMAGE:-mysql:8.0}
     container_name: mysql-graduation
     restart: always
     environment:
@@ -61,10 +62,17 @@ services:
       retries: 5
 
   # 后端服务（修改：添加 embedding 相关环境变量）
+  # 若服务器无法访问 Docker Hub：在本机 docker build 后 docker save，服务器 docker load，再：
+  #   docker-compose -f docker-compose.prod.yml up -d --no-build backend
   backend:
+    image: graduation-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # 国内拉 Docker Hub 基础镜像易超时：与 backend/Dockerfile 中 DOCKERHUB_PROXY 一致
+      # 可在 .env 中设置 DOCKERHUB_PROXY=docker.1ms.run 等（不要加 https://）
+      args:
+        DOCKERHUB_PROXY: ${DOCKERHUB_PROXY:-docker.m.daocloud.io}
     container_name: graduation-backend
     restart: always
     environment:
@@ -106,6 +114,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        DOCKERHUB_PROXY: ${DOCKERHUB_PROXY:-docker.m.daocloud.io}
     container_name: graduation-frontend
     restart: always
     ports:

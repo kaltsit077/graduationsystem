@@ -50,3 +50,9 @@ def embed(req: EmbedRequest):
 @app.get("/")
 def root():
     return {"message": "BGE-M3 嵌入服务已启动", "model_path": MODEL_PATH}
+
+
+# Docker / 负载均衡健康检查（compose 使用 /health；slim 镜像无 curl 时用 Python 探测）
+@app.get("/health")
+def health():
+    return {"status": "ok"}

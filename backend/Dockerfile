@@ -1,8 +1,18 @@
 # 后端 Dockerfile
 # 多阶段构建：先编译，再运行
+#
+# 国内/阿里云 ECS 常无法直连 registry-1.docker.io，构建会卡在拉基础镜像。
+# 默认通过 DaoCloud 代理拉取（与官方 hub 镜像名一致，仅加前缀）。
+# 若代理不可用，可本机构建后 docker save 传到服务器 docker load，或改下面 ARG 为其它镜像源。
+#
+# 可选镜像前缀示例（自行测试哪个可用）：
+#   docker.m.daocloud.io/library/...
+#   docker.1ms.run/library/...
+#   （直连 Docker Hub 时设为空字符串，FROM 需写完整官方名，见下方注释）
 
-# 阶段1: 构建阶段
-FROM maven:3.9.9-eclipse-temurin-17 AS build
+ARG DOCKERHUB_PROXY=docker.m.daocloud.io
+# 构建阶段基础镜像（官方 library/maven）
+FROM ${DOCKERHUB_PROXY}/library/maven:3.9.9-eclipse-temurin-17 AS build
 
 WORKDIR /app
 
@@ -33,8 +43,9 @@ COPY src ./src
 # 构建应用（跳过测试）
 RUN mvn clean package -DskipTests
 
-# 阶段2: 运行阶段
-FROM eclipse-temurin:17-jre-alpine
+# 阶段2: 运行阶段（与阶段1 使用同一代理前缀；此处再声明一次，兼容旧版 Docker 多阶段 ARG 作用域）
+ARG DOCKERHUB_PROXY=docker.m.daocloud.io
+FROM ${DOCKERHUB_PROXY}/library/eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 

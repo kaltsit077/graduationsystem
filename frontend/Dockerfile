@@ -1,5 +1,7 @@
+# 国内拉 Docker Hub 易超时：默认经 DaoCloud 代理（与 backend 一致，可用 build-arg 覆盖）
+ARG DOCKERHUB_PROXY=docker.m.daocloud.io
 # 阶段1: 构建阶段（用轻量 node 镜像，无需编译工具）
-FROM node:18-alpine AS build
+FROM ${DOCKERHUB_PROXY}/library/node:18-alpine AS build
 
 WORKDIR /app
 
@@ -18,7 +20,8 @@ COPY . .
 RUN npm run build
 
 # 阶段2: 运行阶段
-FROM nginx:alpine
+ARG DOCKERHUB_PROXY=docker.m.daocloud.io
+FROM ${DOCKERHUB_PROXY}/library/nginx:alpine
 
 # 复制构建产物
 COPY --from=build /app/dist /usr/share/nginx/html
