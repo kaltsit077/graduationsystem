@@ -1,4 +1,5 @@
-FROM python:3.10-slim
+ARG DOCKERHUB_PROXY=docker.m.daocloud.io
+FROM ${DOCKERHUB_PROXY}/library/python:3.10-slim
 
 WORKDIR /app
 

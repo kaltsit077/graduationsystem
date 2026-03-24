@@ -8,6 +8,8 @@ services:
     build:
       context: ./ai-embedding
       dockerfile: Dockerfile
+      args:
+        DOCKERHUB_PROXY: ${DOCKERHUB_PROXY:-docker.m.daocloud.io}
     container_name: graduation-embedding
     restart: always
     # 生产环境不暴露端口（后端通过容器名访问）
