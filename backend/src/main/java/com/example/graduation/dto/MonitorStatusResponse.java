@@ -12,5 +12,8 @@ public class MonitorStatusResponse {
     private double systemLoadAverage;
     private int activeDbConnections;
     private int idleDbConnections;
+    private int totalDbConnections;
+    private int maxDbConnections;
+    private boolean dbMetricsAvailable;
 }
 

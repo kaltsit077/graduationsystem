@@ -41,6 +41,8 @@ services:
     build:
       context: ./ai-embedding
       dockerfile: Dockerfile
+      args:
+        DOCKERHUB_PROXY: ${DOCKERHUB_PROXY:-docker.m.daocloud.io}
     container_name: embedding-dev
     restart: always
     ports:
@@ -59,8 +61,6 @@ services:
     image: maven:3.9.9-eclipse-temurin-17
     container_name: graduation-backend-dev
     restart: always
-    ports:
-      - "9090:9090"
     environment:
       # 数据库连接配置（使用服务名）
       DB_HOST: mysql
@@ -80,6 +80,8 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       # Embedding 服务（启用 embedding profile 时，用服务名访问）
       EMBEDDING_BASE_URL: http://embedding:8000
+    expose:
+      - "9090"
     volumes:
       # 挂载源代码目录（实现热更新）
       - ./backend:/app
@@ -110,7 +112,7 @@ services:
     container_name: graduation-frontend-dev
     restart: always
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     environment:
       - NODE_ENV=development
       # 让 Vite 在容器内将 /api 代理到 backend 容器，而不是 localhost

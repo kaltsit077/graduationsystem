@@ -12,6 +12,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.lang.NonNull;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -26,8 +27,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private JwtUtil jwtUtil;
     
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain)
             throws ServletException, IOException {
+
+        SecurityContextHolder.clearContext();
         
         String authHeader = request.getHeader("Authorization");
         String token = jwtUtil.extractToken(authHeader);
@@ -38,9 +43,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String username = jwtUtil.getUsernameFromToken(token);
                 String role = jwtUtil.getRoleFromToken(token);
                 
-                // 统一角色规范：
-                // - token 内 role 永远存 "STUDENT"/"TEACHER"/"ADMIN"（不带 ROLE_ 前缀）
-                // - Spring Security authorities 永远使用 "ROLE_STUDENT"/...（供 hasRole/hasAnyRole 使用）
                 String roleUpper = role != null ? role.trim().toUpperCase() : "";
                 String roleNoPrefix = roleUpper.startsWith("ROLE_") ? roleUpper.substring("ROLE_".length()) : roleUpper;
                 String authority = roleNoPrefix.isEmpty() ? "" : "ROLE_" + roleNoPrefix;

@@ -145,14 +145,22 @@ public class AdminController {
         OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
         status.setSystemLoadAverage(osBean.getSystemLoadAverage());
 
+        status.setDbMetricsAvailable(false);
+        status.setActiveDbConnections(0);
+        status.setIdleDbConnections(0);
+        status.setTotalDbConnections(0);
+        status.setMaxDbConnections(0);
+
         if (dataSource instanceof HikariDataSource) {
             HikariDataSource hikari = (HikariDataSource) dataSource;
             try {
                 status.setActiveDbConnections(hikari.getHikariPoolMXBean().getActiveConnections());
                 status.setIdleDbConnections(hikari.getHikariPoolMXBean().getIdleConnections());
+                status.setTotalDbConnections(hikari.getHikariPoolMXBean().getTotalConnections());
+                status.setMaxDbConnections(hikari.getMaximumPoolSize());
+                status.setDbMetricsAvailable(true);
             } catch (Exception ignored) {
-                status.setActiveDbConnections(0);
-                status.setIdleDbConnections(0);
+                status.setDbMetricsAvailable(false);
             }
         }
 

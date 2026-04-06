@@ -1,0 +1,9 @@
+* text=auto
+
+# Windows batch files must use CRLF for cmd.exe reliability
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell scripts
+*.ps1 text eol=crlf
+

@@ -72,6 +72,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(registry -> registry
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error", "/api/ping").permitAll()
+                        // 登录/注册必须允许匿名访问（避免路径匹配差异导致被错误鉴权）
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/login/").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/register/").permitAll()
                         // 上传的静态资源（背景图等）需要可直接访问（浏览器加载图片不会带 Authorization）
                         .requestMatchers("/uploads/**").permitAll()
                         // 先保护 me，再放行 auth 下其它接口（兼容可能的路径细微差异，比如尾部 /）

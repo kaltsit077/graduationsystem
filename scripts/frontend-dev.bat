@@ -1,5 +1,5 @@
 @echo off
-chcp 65001 >nul 2>&1
+chcp 936 >nul 2>&1
 
 setlocal EnableExtensions
 
@@ -17,6 +17,15 @@ echo  Frontend (local dev)
 echo ========================================
 echo Root: %ROOT_DIR%
 echo.
+
+echo ========================================
+echo [INFO] Checking port 5173...
+echo ========================================
+
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":5173" ^| findstr LISTENING') do (
+  echo [WARN] Port 5173 is in use. Killing PID %%P ...
+  taskkill /PID %%P /F >nul 2>&1
+)
 
 where node >nul 2>&1
 if errorlevel 1 goto :node_missing

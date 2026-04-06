@@ -44,6 +44,9 @@ export interface MonitorStatus {
   systemLoadAverage: number
   activeDbConnections: number
   idleDbConnections: number
+  totalDbConnections: number
+  maxDbConnections: number
+  dbMetricsAvailable: boolean
 }
 
 export const getMonitorStatus = () => {

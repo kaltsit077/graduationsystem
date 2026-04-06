@@ -29,9 +29,15 @@
           </div>
         </el-card>
         <el-card shadow="never" class="status-item">
-          <div class="status-label">数据库连接（活动/空闲）</div>
+          <div class="status-label">数据库连接（活动/空闲/总数）</div>
           <div class="status-value">
-            {{ status.activeDbConnections }} / {{ status.idleDbConnections }}
+            <template v-if="status.dbMetricsAvailable">
+              {{ status.activeDbConnections }} / {{ status.idleDbConnections }} / {{ status.totalDbConnections }}
+              <span class="status-sub">（最大 {{ status.maxDbConnections }}）</span>
+            </template>
+            <template v-else>
+              N/A
+            </template>
           </div>
         </el-card>
       </div>
@@ -228,6 +234,12 @@ onUnmounted(() => {
 .status-value {
   font-size: 18px;
   font-weight: 600;
+}
+
+.status-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: #909399;
 }
 
 .status-empty {

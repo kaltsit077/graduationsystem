@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul 2>&1
 title Docker dev - rebuild backend (no data loss)
@@ -94,4 +94,3 @@ echo ========================================
 echo.
 pause
 exit /b 0
-
