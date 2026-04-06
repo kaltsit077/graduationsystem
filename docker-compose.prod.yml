@@ -83,6 +83,7 @@ services:
       DB_PORT: 3306
       DB_NAME: ${DB_NAME:-graduation_topic}
       DB_USER: ${DB_USER:-root}
+      AI_TAG_API_KEY: ${AI_TAG_API_KEY}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-120}

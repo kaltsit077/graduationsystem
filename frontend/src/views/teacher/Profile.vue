@@ -726,7 +726,7 @@ const rerollOne = async (tag: UserTag) => {
   }
 }
 
-const deleteOne = (tag: UserTag) => {
+const deleteOne = async (tag: UserTag) => {
   tags.value = tags.value.filter((t) => t.tagName !== tag.tagName)
   if (activeTag.value?.tagName === tag.tagName) {
     showEditDialog.value = false
@@ -734,9 +734,15 @@ const deleteOne = (tag: UserTag) => {
     editingValue.value = ''
   }
   rebuildSelectedMap()
+  const ok = await saveTags({ silentSuccess: true })
+  if (ok) {
+    ElMessage.success('标签已删除并保存')
+  } else {
+    await loadProfile()
+  }
 }
 
-const commitEdit = (tag: UserTag) => {
+const commitEdit = async (tag: UserTag) => {
   const newName = editingValue.value.trim()
   if (!newName) {
     ElMessage.error('标签名不能为空')
@@ -753,6 +759,12 @@ const commitEdit = (tag: UserTag) => {
   editingValue.value = ''
   editingWeight.value = 0.9
   rebuildSelectedMap()
+  const ok = await saveTags({ silentSuccess: true })
+  if (ok) {
+    ElMessage.success('标签修改已保存')
+  } else {
+    await loadProfile()
+  }
 }
 
 const enterSelectMode = (action: 'delete' | 'reroll') => {
@@ -775,7 +787,12 @@ const confirmSelectionAction = async () => {
     tags.value = tags.value.filter((t) => !selectedNames.value.includes(t.tagName))
     rebuildSelectedMap()
     exitSelectMode()
-    ElMessage.success('已删除选中标签')
+    const ok = await saveTags({ silentSuccess: true })
+    if (ok) {
+      ElMessage.success('已删除并保存选中标签')
+    } else {
+      await loadProfile()
+    }
     return
   }
   const pinned = tags.value.filter((t) => !selectedNames.value.includes(t.tagName))
@@ -801,7 +818,7 @@ const onTagClick = (tag: UserTag) => {
   })
 }
 
-const saveTags = async () => {
+const saveTags = async (opts?: { silentSuccess?: boolean }): Promise<boolean> => {
   savingTags.value = true
   try {
     const cleaned: UserTag[] = []
@@ -818,9 +835,13 @@ const saveTags = async () => {
     const res = await updateTeacherTags(cleaned)
     tags.value = res.data || cleaned
     rebuildSelectedMap()
-    ElMessage.success('标签已保存')
+    if (!opts?.silentSuccess) {
+      ElMessage.success('标签已保存')
+    }
+    return true
   } catch (e: any) {
     ElMessage.error(e.message || '保存标签失败')
+    return false
   } finally {
     savingTags.value = false
   }

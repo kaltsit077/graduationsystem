@@ -54,8 +54,8 @@ ai:
   tag:
     enabled: true
     api-url: https://gcli.ggchan.dev/v1/chat/completions
-    api-key: gg-gcli-Gh4SeqClPIdbIMw6XpKcsFxJRPQQ8SK5TVChjdoOAmE
-    model: gemini-2.5-flash
+    api-key: ${AI_TAG_API_KEY}
+    model: gemini-2.5-pro
     timeout-ms: 300000
 
 # 语义向量服务（本地 sentence-transformers / bge）

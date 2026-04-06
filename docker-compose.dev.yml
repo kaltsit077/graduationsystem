@@ -68,6 +68,7 @@ services:
       DB_NAME: graduation_topic
       DB_USER: root
       DB_PASSWORD: root
+      AI_TAG_API_KEY: ${AI_TAG_API_KEY}
       # JWT 配置
       JWT_SECRET: ${JWT_SECRET:-QxuhaiYhazhkrYbbJQwhvJd06GVWAq09YCC7NceNjsM2GDciiM30tClcrS2pD3+nDV2cIrQIVK0qnFJLqbCIRw==}
       JWT_EXPIRATION: 120

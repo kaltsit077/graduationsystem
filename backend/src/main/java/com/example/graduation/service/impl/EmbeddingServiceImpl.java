@@ -3,6 +3,7 @@ package com.example.graduation.service.impl;
 import com.example.graduation.service.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -48,7 +49,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
     @Value("${embedding.cache.max-entries:512}")
     private int cacheMaxEntries;
 
-    public EmbeddingServiceImpl(RestTemplate restTemplate) {
+    public EmbeddingServiceImpl(@Qualifier("embeddingRestTemplate") RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
         this.cache = Collections.synchronizedMap(new LinkedHashMap<String, float[]>(256, 0.75f, true) {
             @Override

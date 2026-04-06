@@ -52,7 +52,8 @@ export const getOpenTopics = () => {
 
 // 获取已开放的选题列表（学生端，附带匹配度）
 export const getOpenTopicsWithScore = () => {
-  return request.get<Topic[]>('/topics/open-with-score')
+  // 该接口会为每个选题计算匹配度（可能触发 embedding 调用），延迟略高，适当放宽超时
+  return request.get<Topic[]>('/topics/open-with-score', { timeout: 30000 })
 }
 
 // 获取选题列表（可按状态筛选）
