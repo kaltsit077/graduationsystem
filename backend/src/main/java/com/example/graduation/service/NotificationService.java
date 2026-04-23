@@ -19,13 +19,18 @@ public class NotificationService {
      * 创建通知
      */
     public Notification createNotification(Long userId, String type, String title, String content, Long relatedId) {
-        return createNotification(userId, type, title, content, relatedId, 0);
+        return createNotification(userId, type, title, content, relatedId, null, 0);
     }
 
     /**
      * 创建通知（可指定已读状态）
      */
     public Notification createNotification(Long userId, String type, String title, String content, Long relatedId, int isRead) {
+        return createNotification(userId, type, title, content, relatedId, null, isRead);
+    }
+
+    public Notification createNotification(Long userId, String type, String title, String content, Long relatedId,
+                                          String collabStage, int isRead) {
         Notification notification = new Notification();
         notification.setUserId(userId);
         notification.setType(type);
@@ -33,8 +38,9 @@ public class NotificationService {
         notification.setContent(content);
         notification.setIsRead(isRead);
         notification.setRelatedId(relatedId);
+        notification.setCollabStage(collabStage);
         notification.setCreatedAt(LocalDateTime.now());
-        
+
         notificationMapper.insert(notification);
         return notification;
     }
@@ -42,7 +48,8 @@ public class NotificationService {
     /**
      * 获取用户通知列表（可按已读状态、类型、关联ID及条数过滤）
      */
-    public List<Notification> getUserNotifications(Long userId, Boolean isRead, String type, Long relatedId, Integer limit) {
+    public List<Notification> getUserNotifications(Long userId, Boolean isRead, String type, Long relatedId,
+                                                   String collabStage, Integer limit) {
         LambdaQueryWrapper<Notification> wrapper = new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getUserId, userId);
         
@@ -56,6 +63,10 @@ public class NotificationService {
         
         if (relatedId != null) {
             wrapper.eq(Notification::getRelatedId, relatedId);
+        }
+
+        if (collabStage != null && !collabStage.isBlank()) {
+            wrapper.eq(Notification::getCollabStage, collabStage);
         }
         
         wrapper.orderByDesc(Notification::getCreatedAt);
@@ -82,7 +93,7 @@ public class NotificationService {
      * 标记所有通知为已读
      */
     public void markAllAsRead(Long userId) {
-        List<Notification> notifications = getUserNotifications(userId, false, null, null, null);
+        List<Notification> notifications = getUserNotifications(userId, false, null, null, null, null);
         notifications.forEach(notification -> {
             notification.setIsRead(1);
             notificationMapper.updateById(notification);

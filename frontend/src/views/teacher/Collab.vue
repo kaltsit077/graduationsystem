@@ -1,51 +1,141 @@
 <template>
-  <!-- 教师协作页面主布局，复用通用协作面板 -->
   <div class="collab-page">
-    <!-- 顶部学生/申请切换条：导师可在名下多个学生之间快速切换协作对象 -->
-    <div class="collab-header" v-if="applications.length">
-      <span class="collab-header-label">当前协作学生：</span>
-      <el-segmented
-        v-model="currentApplicationId"
-        :options="applications.map(a => ({ label: a.studentName + ' / ' + a.topicTitle, value: a.id }))"
-        size="small"
-        @change="handleSelectApplication"
-      />
-    </div>
-
     <collab-panel
+      v-if="approvedApplication"
       identity="teacher"
       :application="approvedApplication"
       :messages="messages"
+      :chat-stage="selectedChatStage"
+      :show-thesis-upload-button="false"
       @refreshMessages="loadMessages"
       @sendMessage="handleSendMessage"
-      @uploadThesis="() => {}"
     >
-      <!-- 论文列表插槽：展示当前教师名下学生的论文，并提供录入成绩入口 -->
+      <template #headerExtra>
+        <el-button
+          type="primary"
+          size="small"
+          :disabled="!approvedApplication"
+          class="student-pick-btn"
+          @click="studentSelectDialogVisible = true"
+        >
+          学生：{{ currentStudentText }}
+        </el-button>
+        <el-button
+          class="win-btn"
+          type="primary"
+          size="small"
+          :disabled="!approvedApplication"
+          @click="openWindowDialog"
+        >
+          配置各环节时间
+        </el-button>
+      </template>
       <template #thesis>
-        <el-table :data="theses" style="width: 100%" size="small" v-loading="loadingThesis">
-          <el-table-column prop="studentName" label="学生" width="120" />
-          <el-table-column prop="fileName" label="文件名" min-width="200" />
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column prop="createdAt" label="上传时间" width="180" />
-          <el-table-column label="操作" width="200">
+        <el-table
+          :data="treeRows"
+          v-loading="loadingProgress"
+          size="small"
+          highlight-current-row
+          row-key="id"
+          class="process-table"
+          @row-click="onSelectStage"
+          :row-class-name="tableRowClass"
+          :tree-props="{ children: 'children' }"
+          ref="processTableRef"
+        >
+          <el-table-column label="序号" width="58">
             <template #default="{ row }">
-              <el-button
-                v-if="row.fileUrl"
-                type="primary"
-                link
-                size="small"
-                @click="openFile(row.fileUrl)"
-              >
-                打开文件
-              </el-button>
-              <el-button type="primary" link size="small" @click="openEvalDialog(row)">录入成绩</el-button>
+              <span v-if="row.type === 'stage'">{{ row.orderIndex }}</span>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="毕设环节" min-width="168">
+            <template #default="{ row }">
+              <div v-if="row.type === 'phase'" class="phase-title">{{ row.phaseLabel }}</div>
+              <template v-else>
+                <div class="stage-title">{{ row.stageLabel }}</div>
+                <div class="stage-access" :class="accessClass(row.accessState)">{{ accessLabel(row.accessState) }}</div>
+              </template>
+            </template>
+          </el-table-column>
+          <el-table-column label="时间计划" min-width="236" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.type === 'stage'">{{ row.timePlanText }}</span>
+              <span v-else class="phase-hint">阶段内环节可并行；需上一阶段全部通过才解锁</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="提交与审核" width="132">
+            <template #default="{ row }">
+              <span v-if="row.type === 'stage'" :class="submitClass(row.submissionStatus)">{{
+                row.submissionStatusLabel
+              }}</span>
+              <span v-else class="phase-hint">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" fixed="right" align="center" header-align="center">
+            <template #default="{ row }">
+              <template v-if="row.type === 'stage'">
+                <el-dropdown trigger="click" @click.stop>
+                  <el-button link size="small" class="row-action-btn">
+                    编辑
+                    <el-icon class="row-action-icon"><ArrowDown /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        :disabled="!row.latestThesisId"
+                        @click="row.latestThesisId && openThesisFile(row.latestThesisId)"
+                      >
+                        打开文件
+                      </el-dropdown-item>
+                      <el-dropdown-item :disabled="!row.latestThesisId" @click="openEvalDialog(row)">
+                        录入成绩
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        divided
+                        :disabled="!row.latestThesisId || row.submissionStatus !== 'UNDER_REVIEW'"
+                        @click="doWorkflow(row, 'APPROVE')"
+                      >
+                        审核通过
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        :disabled="!row.latestThesisId || row.submissionStatus !== 'UNDER_REVIEW'"
+                        @click="doWorkflow(row, 'NEED_REVISION')"
+                      >
+                        退回修改
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </template>
+              <span v-else class="phase-actions">—</span>
             </template>
           </el-table-column>
         </el-table>
       </template>
     </collab-panel>
 
-    <!-- 录入/查看论文成绩的弹窗，对应单篇论文的教师评价 -->
+    <el-dialog
+      v-model="studentSelectDialogVisible"
+      title="选择协作学生"
+      width="720px"
+      destroy-on-close
+    >
+      <el-table
+        :data="applications"
+        size="small"
+        row-key="id"
+        highlight-current-row
+        @row-click="selectApplication"
+      >
+        <el-table-column label="学生" prop="studentName" min-width="220" show-overflow-tooltip />
+        <el-table-column label="申请时间" prop="createdAt" min-width="180" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="studentSelectDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="evalDialogVisible" title="录入论文成绩" width="500px">
       <el-form :model="evalForm" label-width="120px">
         <el-form-item label="总评分（0-100）" required>
@@ -74,30 +164,65 @@
         <el-button type="primary" @click="submitEval" :loading="savingEval">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="windowDialogVisible" title="配置该学生的各环节开放时间" width="720px" destroy-on-close>
+      <el-alert
+        type="info"
+        :closable="false"
+        class="win-alert"
+        title="未启用的时间段可留空；启用时需同时选择开始与结束，且落在管理员设置的毕业季总时间范围内。"
+      />
+      <el-table :data="windowEditorRows" size="small" class="win-table" max-height="420">
+        <el-table-column prop="stageLabel" label="环节" min-width="140" />
+        <el-table-column label="开放起止" min-width="340">
+          <template #default="{ row }">
+            <el-date-picker
+              v-model="row.range"
+              type="datetimerange"
+              range-separator="至"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              style="width: 100%"
+            />
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="windowDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingWindows" @click="submitWindows">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, ref, onMounted, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 import CollabPanel from '@/components/CollabPanel.vue'
 import { getTopicApplications, type Application } from '@/api/application'
 import { getTopics } from '@/api/topic'
-import { getTeacherTheses, type Thesis } from '@/api/thesis'
 import { getNotifications, sendChatMessage, type Notification } from '@/api/notification'
 import { saveThesisEvaluation, getThesisEvaluation } from '@/api/evaluation'
+import { getCollabProgress, saveCollabStageWindows, type StageProgressItem } from '@/api/collab'
+import { getThesis, reviewThesisWorkflow } from '@/api/thesis'
 
-// 教师名下已通过的选题申请列表，用于确定当前协作上下文
+interface WindowEditorRow {
+  stage: string
+  stageLabel: string
+  range: [string, string] | null
+}
+
 const applications = ref<Application[]>([])
-// 当前选中的申请ID（导师可在多个学生之间切换）
 const currentApplicationId = ref<number | null>(null)
-// 当前选题下的消息列表（由协作面板展示）
 const messages = ref<Notification[]>([])
-// 当前教师名下的所有学生论文列表
-const theses = ref<Thesis[]>([])
-const loadingThesis = ref(false)
+const progressRows = ref<StageProgressItem[]>([])
+const loadingProgress = ref(false)
+const selectedChatStage = ref<string | null>(null)
+const processTableRef = ref()
 
-// 论文成绩录入弹窗的显隐和表单状态
 const evalDialogVisible = ref(false)
 const evalThesisId = ref<number | null>(null)
 const evalForm = ref({
@@ -109,20 +234,103 @@ const evalForm = ref({
 })
 const savingEval = ref(false)
 
-// 当前用于协作的“选题申请”（教师一旦有多个选题，可以根据需要调整选择逻辑）
+const windowDialogVisible = ref(false)
+/** 弹窗内编辑行 */
+const windowEditorRows = ref<WindowEditorRow[]>([])
+const savingWindows = ref(false)
+
+const studentSelectDialogVisible = ref(false)
+
 const approvedApplication = computed(() => {
   const manual = applications.value.find((a) => a.id === currentApplicationId.value)
   if (manual) return manual
   return applications.value.find((a) => a.status === 'APPROVED') || null
 })
 
-// 导师切换当前协作的学生/申请
-const handleSelectApplication = (id: number) => {
-  currentApplicationId.value = id
-  loadMessages()
+const currentStudentText = computed(() => {
+  return approvedApplication.value?.studentName || '未选择'
+})
+
+const selectApplication = (row: Application) => {
+  currentApplicationId.value = row.id
+  studentSelectDialogVisible.value = false
 }
 
-// 加载当前教师名下所有已通过的选题申请
+function accessLabel(state: string) {
+  if (state === 'NOT_CONFIGURED') return '未开放'
+  if (state === 'NOT_OPEN_YET') return '未开始'
+  if (state === 'OPEN') return '已开启'
+  if (state === 'ENDED') return '已结束'
+  return state
+}
+
+function accessClass(state: string) {
+  if (state === 'OPEN') return 'acc-open'
+  if (state === 'ENDED') return 'acc-ended'
+  return 'acc-muted'
+}
+
+function submitClass(sub: string) {
+  if (sub === 'UNDER_REVIEW') return 'sub-review'
+  if (sub === 'NEED_REVISION') return 'sub-reject'
+  if (sub === 'APPROVED') return 'sub-ok'
+  if (sub === 'BLOCKED_BY_PREVIOUS') return 'sub-muted'
+  return 'sub-muted'
+}
+
+type TreeRow =
+  | ({ type: 'phase'; id: string; phaseIndex: number; phaseLabel: string; children: TreeRow[] } & Record<string, any>)
+  | ({ type: 'stage'; id: string } & StageProgressItem)
+
+const treeRows = computed<TreeRow[]>(() => {
+  const groups = new Map<number, { phaseLabel: string; items: StageProgressItem[] }>()
+  for (const r of progressRows.value) {
+    const g = groups.get(r.phaseIndex) || { phaseLabel: r.phaseLabel, items: [] }
+    g.items.push(r)
+    g.phaseLabel = r.phaseLabel
+    groups.set(r.phaseIndex, g)
+  }
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([phaseIndex, g]) => {
+      const children: TreeRow[] = g.items
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((x) => ({ type: 'stage', id: `stage-${x.stage}`, ...x }))
+      return {
+        type: 'phase',
+        id: `phase-${phaseIndex}`,
+        phaseIndex,
+        phaseLabel: g.phaseLabel,
+        children
+      } as TreeRow
+    })
+})
+
+function tableRowClass({ row }: { row: any }) {
+  if (row.type === 'phase') return 'is-phase-row'
+  return selectedChatStage.value === row.stage ? 'is-active-stage' : ''
+}
+
+function onSelectStage(row: any) {
+  if (row.type === 'phase') {
+    ;(processTableRef.value as any)?.toggleRowExpansion?.(row)
+    return
+  }
+  if (row.type !== 'stage') return
+  selectedChatStage.value = row.stage
+}
+
+function pickDefaultStage() {
+  const openFirst = progressRows.value.find((r) => r.accessState === 'OPEN')
+  if (openFirst) {
+    selectedChatStage.value = openFirst.stage
+    return
+  }
+  if (progressRows.value.length) {
+    selectedChatStage.value = progressRows.value[0].stage
+  }
+}
+
 const loadApplications = async () => {
   try {
     const topicsRes = await getTopics()
@@ -133,31 +341,43 @@ const loadApplications = async () => {
       all.push(...(appsRes.data || []))
     }
     applications.value = all.filter((a) => a.status === 'APPROVED')
+    if (!currentApplicationId.value && applications.value.length) {
+      currentApplicationId.value = applications.value[0].id
+    }
   } catch {
     ElMessage.error('加载申请记录失败')
   }
 }
 
-// 加载教师名下的学生论文列表
-const loadTheses = async () => {
-  loadingThesis.value = true
+const loadProgress = async () => {
+  if (!approvedApplication.value) {
+    progressRows.value = []
+    return
+  }
+  loadingProgress.value = true
   try {
-    const res = await getTeacherTheses()
-    theses.value = res.data || []
+    const res = await getCollabProgress(approvedApplication.value.id)
+    progressRows.value = res.data || []
+    if (!selectedChatStage.value || !progressRows.value.some((r) => r.stage === selectedChatStage.value)) {
+      pickDefaultStage()
+    }
   } catch {
-    ElMessage.error('加载作业失败')
+    ElMessage.error('加载环节进度失败')
   } finally {
-    loadingThesis.value = false
+    loadingProgress.value = false
   }
 }
 
-// 加载当前选题下的协作消息
 const loadMessages = async () => {
-  if (!approvedApplication.value) return
+  if (!approvedApplication.value || !selectedChatStage.value) {
+    messages.value = []
+    return
+  }
   try {
     const res = await getNotifications({
       type: 'CHAT',
       relatedId: approvedApplication.value.id,
+      collabStage: selectedChatStage.value,
       limit: 200
     })
     messages.value = res.data || []
@@ -166,12 +386,14 @@ const loadMessages = async () => {
   }
 }
 
-// 发送协作消息，由协作面板触发
-const handleSendMessage = async (content: string) => {
+const handleSendMessage = async (content: string, collabStage: string | null | undefined) => {
   if (!approvedApplication.value) return
+  if (!collabStage) {
+    ElMessage.warning('请选择环节')
+    return
+  }
   try {
-    // 导师端也可以不显式指定学生ID，由后端根据 relatedId + 当前角色推断接收人
-    await sendChatMessage(0, content, approvedApplication.value.id)
+    await sendChatMessage(0, content, approvedApplication.value.id, collabStage)
     ElMessage.success('消息已发送')
     await loadMessages()
   } catch {
@@ -179,9 +401,40 @@ const handleSendMessage = async (content: string) => {
   }
 }
 
-// 打开成绩录入弹窗，并尝试加载已有的教师评价进行预填
-const openEvalDialog = (row: Thesis) => {
-  evalThesisId.value = row.id
+async function doWorkflow(row: StageProgressItem, decision: 'APPROVE' | 'NEED_REVISION') {
+  if (!row.latestThesisId) return
+  try {
+    await ElMessageBox.confirm(
+      decision === 'APPROVE' ? '确认将该稿件标记为「已通过」？' : '确认将该稿件退回修改？',
+      '审核确认',
+      { type: decision === 'APPROVE' ? 'success' : 'warning' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await reviewThesisWorkflow(row.latestThesisId, decision)
+    ElMessage.success('已更新审核状态')
+    await loadProgress()
+  } catch {
+    /* 拦截器 */
+  }
+}
+
+async function openThesisFile(id: number) {
+  try {
+    const res = await getThesis(id)
+    const url = res.data?.fileUrl
+    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    else ElMessage.warning('未找到文件地址')
+  } catch {
+    ElMessage.error('无法打开文件')
+  }
+}
+
+const openEvalDialog = (row: StageProgressItem) => {
+  if (!row.latestThesisId) return
+  evalThesisId.value = row.latestThesisId
   evalForm.value = {
     score: undefined,
     defenseScore: undefined,
@@ -191,27 +444,21 @@ const openEvalDialog = (row: Thesis) => {
   }
   ;(async () => {
     try {
-      const res = await getThesisEvaluation(row.id)
+      const res = await getThesisEvaluation(row.latestThesisId!)
       if (res.data && res.data.score != null) {
-        evalForm.value.score = res.data.score
-        evalForm.value.defenseScore = res.data.defenseScore
-        evalForm.value.reviewScore = res.data.reviewScore
+        evalForm.value.score = Number(res.data.score)
+        evalForm.value.defenseScore = res.data.defenseScore != null ? Number(res.data.defenseScore) : undefined
+        evalForm.value.reviewScore = res.data.reviewScore != null ? Number(res.data.reviewScore) : undefined
         evalForm.value.gradeLevel = res.data.gradeLevel || ''
         evalForm.value.comment = res.data.comment || ''
       }
     } catch {
-      // 忽略加载失败，保持空表单
+      /* ignore */
     }
   })()
   evalDialogVisible.value = true
 }
 
-const openFile = (url: string) => {
-  if (!url) return
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-// 提交教师对论文的成绩评价
 const submitEval = async () => {
   if (!evalThesisId.value) return
   if (evalForm.value.score == null) {
@@ -230,7 +477,7 @@ const submitEval = async () => {
     })
     ElMessage.success('成绩已保存')
     evalDialogVisible.value = false
-    await loadTheses()
+    await loadProgress()
   } catch {
     ElMessage.error('保存失败')
   } finally {
@@ -238,11 +485,68 @@ const submitEval = async () => {
   }
 }
 
-// 页面挂载时，加载教师协作所需的基础数据
+function openWindowDialog() {
+  if (!approvedApplication.value) return
+  windowEditorRows.value = progressRows.value.map((r) => {
+    let range: [string, string] | null = null
+    if (r.windowStart && r.windowEnd) {
+      range = [r.windowStart, r.windowEnd]
+    }
+    return {
+      stage: r.stage,
+      stageLabel: r.stageLabel,
+      range
+    }
+  })
+  windowDialogVisible.value = true
+}
+
+const submitWindows = async () => {
+  if (!approvedApplication.value) return
+  savingWindows.value = true
+  try {
+    const items = windowEditorRows.value.map((row) => {
+      if (row.range && row.range.length === 2) {
+        return {
+          stage: row.stage,
+          windowStart: row.range[0],
+          windowEnd: row.range[1]
+        }
+      }
+      return { stage: row.stage, windowStart: null, windowEnd: null }
+    })
+    await saveCollabStageWindows(approvedApplication.value.id, items)
+    ElMessage.success('环节时间已保存')
+    windowDialogVisible.value = false
+    await loadProgress()
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    savingWindows.value = false
+  }
+}
+
+watch(selectedChatStage, () => {
+  loadMessages()
+})
+
+watch(
+  currentApplicationId,
+  async (id) => {
+    selectedChatStage.value = null
+    if (!id) {
+      progressRows.value = []
+      messages.value = []
+      return
+    }
+    await loadProgress()
+    await loadMessages()
+  },
+  { immediate: true }
+)
+
 onMounted(async () => {
   await loadApplications()
-  await loadTheses()
-  await loadMessages()
 })
 </script>
 
@@ -257,10 +561,85 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.win-btn {
+  margin-left: auto;
 }
 
 .collab-header-label {
   font-size: 13px;
   color: #606266;
+}
+
+.process-table :deep(.is-active-stage) {
+  background: #f0f9ff !important;
+}
+
+.process-table :deep(.is-phase-row) {
+  background: #f6f8fb !important;
+}
+
+.process-table :deep(.el-table__expand-icon) {
+  display: none;
+}
+
+.phase-title {
+  font-weight: 600;
+  color: #303133;
+}
+
+.phase-hint {
+  font-size: 12px;
+  color: #909399;
+}
+
+.phase-actions {
+  color: #c0c4cc;
+}
+
+.stage-title {
+  font-weight: 500;
+  font-size: 13px;
+}
+.stage-access {
+  font-size: 12px;
+  margin-top: 2px;
+}
+.acc-open {
+  color: #409eff;
+}
+.acc-ended {
+  color: #909399;
+}
+.acc-muted {
+  color: #c0c4cc;
+}
+
+.sub-review {
+  color: #e6a23c;
+}
+.sub-reject {
+  color: #f56c6c;
+}
+.sub-ok {
+  color: #67c23a;
+}
+.sub-muted {
+  color: #909399;
+}
+
+.win-alert {
+  margin-bottom: 12px;
+}
+
+.row-action-btn {
+  padding: 0;
+}
+
+.row-action-icon {
+  margin-left: 2px;
+  font-size: 12px;
 }
 </style>

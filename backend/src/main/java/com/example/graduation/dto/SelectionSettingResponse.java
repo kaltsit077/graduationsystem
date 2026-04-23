@@ -13,6 +13,10 @@ public class SelectionSettingResponse {
 
     private LocalDateTime endTime;
 
+    private LocalDateTime graduationSeasonStart;
+
+    private LocalDateTime graduationSeasonEnd;
+
     /** 服务器当前判断的“此刻是否开放” */
     private Boolean openNow;
 }

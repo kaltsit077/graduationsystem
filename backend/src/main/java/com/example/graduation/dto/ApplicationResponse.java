@@ -12,6 +12,7 @@ public class ApplicationResponse {
     private String topicTitle;
     /** 选题所属导师ID，便于前端直接确定消息收件人 */
     private Long teacherId;
+    private String teacherName;
     private Long studentId;
     private String studentName;
     private String status;

@@ -95,10 +95,8 @@ services:
       sh -c "
         echo '等待 MySQL 就绪...' &&
         sleep 10 &&
-        echo '首次编译项目...' &&
-        mvn clean package -DskipTests &&
-        echo '启动后端服务（支持热更新）...' &&
-        mvn spring-boot:run -Dspring-boot.run.profiles=prod
+        echo '启动后端服务（支持热更新/增量编译）...' &&
+        mvn spring-boot:run -DskipTests -Dspring-boot.run.profiles=prod
       "
     depends_on:
       mysql:

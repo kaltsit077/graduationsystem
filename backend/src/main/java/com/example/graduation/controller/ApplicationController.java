@@ -135,6 +135,12 @@ public class ApplicationController {
             if (topic != null) {
                 response.setTopicTitle(topic.getTitle());
                 response.setTeacherId(topic.getTeacherId());
+                if (topic.getTeacherId() != null) {
+                    User teacher = userMapper.selectById(topic.getTeacherId());
+                    if (teacher != null) {
+                        response.setTeacherName(teacher.getRealName());
+                    }
+                }
             }
         }
         

@@ -5,6 +5,7 @@ export interface Application {
   topicId: number
   topicTitle?: string
   teacherId?: number
+  teacherName?: string
   studentId: number
   studentName?: string
   status: string

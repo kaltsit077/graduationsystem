@@ -125,12 +125,33 @@ public class ApplicationService {
         if (application.getStatus() != TopicApplication.ApplicationStatus.PENDING) {
             throw new RuntimeException("申请已处理");
         }
+
+        // 硬约束：同一选题最多只能有 1 条 APPROVED
+        if (status == TopicApplication.ApplicationStatus.APPROVED) {
+            TopicApplication alreadyApproved = applicationMapper.selectOne(
+                    new LambdaQueryWrapper<TopicApplication>()
+                            .eq(TopicApplication::getTopicId, application.getTopicId())
+                            .eq(TopicApplication::getStatus, TopicApplication.ApplicationStatus.APPROVED)
+                            .last("LIMIT 1")
+            );
+            if (alreadyApproved != null) {
+                throw new RuntimeException("该选题已被其他学生占用，无法再次通过申请");
+            }
+        }
         
         // 更新申请状态
         application.setStatus(status);
         application.setTeacherFeedback(feedback);
         application.setUpdatedAt(LocalDateTime.now());
-        applicationMapper.updateById(application);
+        try {
+            applicationMapper.updateById(application);
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            if (msg.contains("uk_topic_approved") || msg.contains("Duplicate") || msg.contains("duplicate")) {
+                throw new RuntimeException("该选题已被其他学生占用，无法再次通过申请");
+            }
+            throw e;
+        }
         
         // 如果通过，关闭选题（如果申请人数已满）
         if (status == TopicApplication.ApplicationStatus.APPROVED) {

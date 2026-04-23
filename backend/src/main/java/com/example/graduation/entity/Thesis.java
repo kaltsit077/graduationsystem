@@ -26,6 +26,9 @@ public class Thesis {
     private String fileName;
     
     private Long fileSize;
+
+    /** 环节：与 {@link com.example.graduation.entity.CollabStage#name()} 对应；旧数据可能为 LEGACY_FILE */
+    private String stage;
     
     private ThesisStatus status;
     
@@ -34,8 +37,12 @@ public class Thesis {
     private LocalDateTime updatedAt;
     
     public enum ThesisStatus {
-        UPLOADED,  // 已上传
-        REVIEWED   // 已评审
+        /** 已提交，导师待审核 */
+        UPLOADED,
+        /** 退回修改，学生可重新提交新版本 */
+        NEED_REVISION,
+        /** 已通过（含导师打分后视为通过） */
+        REVIEWED
     }
 }
 

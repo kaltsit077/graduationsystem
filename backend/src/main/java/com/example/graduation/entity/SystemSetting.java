@@ -27,6 +27,12 @@ public class SystemSetting {
     /** 选题开放结束时间（可选） */
     private LocalDateTime selectionEndTime;
 
+    /** 毕业季总时间窗起（可选）：导师为各环节设置的时间不能超出此范围 */
+    private LocalDateTime graduationSeasonStart;
+
+    /** 毕业季总时间窗止（可选） */
+    private LocalDateTime graduationSeasonEnd;
+
     private LocalDateTime updatedAt;
 }
 

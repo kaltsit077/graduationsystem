@@ -55,7 +55,8 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                     "notification",
                     "change_request",
                     "mentor_application",
-                    "system_setting"
+                    "system_setting",
+                    "collab_stage_window"
             };
 
             for (String t : coreTables) {
@@ -173,6 +174,108 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                         "ADD COLUMN content_blur INT NOT NULL DEFAULT 0 " +
                         "COMMENT '内容容器毛玻璃模糊强度（px，0-24）' AFTER content_alpha"
         );
+
+        ensureTableExists(
+                "collab_stage_window",
+                "CREATE TABLE IF NOT EXISTS `collab_stage_window` (\n" +
+                        "    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',\n" +
+                        "    `application_id` BIGINT NOT NULL COMMENT '选题申请ID',\n" +
+                        "    `stage` VARCHAR(64) NOT NULL COMMENT '环节代码',\n" +
+                        "    `window_start` DATETIME DEFAULT NULL COMMENT '环节开放开始',\n" +
+                        "    `window_end` DATETIME DEFAULT NULL COMMENT '环节开放结束',\n" +
+                        "    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',\n" +
+                        "    PRIMARY KEY (`id`),\n" +
+                        "    UNIQUE KEY `uk_app_stage` (`application_id`, `stage`),\n" +
+                        "    KEY `idx_application_id` (`application_id`),\n" +
+                        "    CONSTRAINT `fk_csw_app` FOREIGN KEY (`application_id`) REFERENCES `topic_application` (`id`) ON DELETE CASCADE\n" +
+                        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='导师为各协作环节配置的时间窗'"
+        );
+
+        ensureColumnExists(
+                "system_setting",
+                "graduation_season_start",
+                "ALTER TABLE system_setting " +
+                        "ADD COLUMN graduation_season_start DATETIME DEFAULT NULL " +
+                        "COMMENT '毕业季总时间窗起' AFTER selection_end_time"
+        );
+        ensureColumnExists(
+                "system_setting",
+                "graduation_season_end",
+                "ALTER TABLE system_setting " +
+                        "ADD COLUMN graduation_season_end DATETIME DEFAULT NULL " +
+                        "COMMENT '毕业季总时间窗止' AFTER graduation_season_start"
+        );
+
+        ensureColumnExists(
+                "thesis",
+                "stage",
+                "ALTER TABLE thesis " +
+                        "ADD COLUMN stage VARCHAR(64) DEFAULT NULL " +
+                        "COMMENT '协作环节代码' AFTER file_size"
+        );
+
+        migrateThesisStatusColumnIfNeeded();
+
+        ensureColumnExists(
+                "notification",
+                "collab_stage",
+                "ALTER TABLE notification " +
+                        "ADD COLUMN collab_stage VARCHAR(64) DEFAULT NULL " +
+                        "COMMENT '协作消息所属环节' AFTER related_id"
+        );
+
+        // topic_application：同一选题仅允许一条 APPROVED（通过生成列 + UNIQUE 实现）
+        ensureColumnExists(
+                "topic_application",
+                "approved_lock",
+                "ALTER TABLE topic_application " +
+                        "ADD COLUMN approved_lock TINYINT " +
+                        "GENERATED ALWAYS AS (CASE WHEN status = 'APPROVED' THEN 1 ELSE NULL END) STORED " +
+                        "COMMENT '用于约束同题仅一人通过（NULL 可重复）' AFTER status"
+        );
+        ensureIndexExists(
+                "topic_application",
+                "uk_topic_approved",
+                "ALTER TABLE topic_application ADD UNIQUE KEY uk_topic_approved (topic_id, approved_lock)"
+        );
+
+        backfillThesisStageLegacy();
+    }
+
+    private void migrateThesisStatusColumnIfNeeded() throws Exception {
+        try (Connection conn = dataSource.getConnection()) {
+            if (!tableExists(conn, "thesis") || !columnExists(conn, "thesis", "status")) {
+                return;
+            }
+            String columnType = null;
+            String sql = "SELECT COLUMN_TYPE FROM information_schema.COLUMNS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'thesis' AND COLUMN_NAME = 'status'";
+            try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+                if (rs.next()) {
+                    columnType = rs.getString(1);
+                }
+            }
+            if (columnType != null && columnType.toLowerCase().contains("enum")) {
+                log.warn("检测到 thesis.status 仍为 ENUM，将迁移为 VARCHAR 以支持 NEED_REVISION");
+                try (Statement st = conn.createStatement()) {
+                    st.execute("ALTER TABLE thesis MODIFY COLUMN status VARCHAR(32) NOT NULL DEFAULT 'UPLOADED'");
+                }
+                log.info("迁移完成：thesis.status 已改为 VARCHAR");
+            }
+        }
+    }
+
+    private void backfillThesisStageLegacy() throws Exception {
+        try (Connection conn = dataSource.getConnection()) {
+            if (!tableExists(conn, "thesis") || !columnExists(conn, "thesis", "stage")) {
+                return;
+            }
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("UPDATE thesis SET stage = 'LEGACY_FILE' WHERE stage IS NULL OR stage = ''");
+            }
+        } catch (Exception e) {
+            log.warn("回填 thesis.stage 失败（可忽略）：{}", e.getMessage());
+        }
     }
 
     private static class SchemaReport {
@@ -207,6 +310,22 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         }
     }
 
+    private void ensureIndexExists(String tableName, String indexName, String createSql) throws Exception {
+        try (Connection conn = dataSource.getConnection()) {
+            if (!tableExists(conn, tableName)) {
+                return;
+            }
+            if (indexExists(conn, tableName, indexName)) {
+                return;
+            }
+            log.warn("检测到缺失索引 {}.{}，将执行迁移 SQL", tableName, indexName);
+            try (Statement st = conn.createStatement()) {
+                st.execute(createSql);
+            }
+            log.info("迁移完成：已创建索引 {}.{}", tableName, indexName);
+        }
+    }
+
     private boolean tableExists(Connection conn, String tableName) throws Exception {
         String sql = "SELECT COUNT(1) " +
                 "FROM information_schema.tables " +
@@ -229,6 +348,22 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, tableName);
             ps.setString(2, columnName);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean indexExists(Connection conn, String tableName, String indexName) throws Exception {
+        String sql = "SELECT COUNT(1) " +
+                "FROM information_schema.statistics " +
+                "WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, tableName);
+            ps.setString(2, indexName);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return rs.getInt(1) > 0;

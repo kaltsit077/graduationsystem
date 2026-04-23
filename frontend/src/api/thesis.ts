@@ -9,6 +9,7 @@ export interface Thesis {
   fileUrl: string
   fileName: string
   fileSize: number
+  stage?: string
   status: string
   createdAt?: string
   updatedAt?: string
@@ -27,9 +28,12 @@ export const uploadThesis = (data: ThesisUploadRequest) => {
 }
 
 // 上传论文文件（服务器存储）
-export const uploadThesisFile = (topicId: number, file: File) => {
+export const uploadThesisFile = (topicId: number, file: File, stage?: string) => {
   const form = new FormData()
   form.append('topicId', String(topicId))
+  if (stage) {
+    form.append('stage', stage)
+  }
   form.append('file', file)
   return request.post<Thesis>('/thesis/upload-file', form, {
     headers: {
@@ -51,5 +55,9 @@ export const getTeacherTheses = () => {
 // 获取论文详情
 export const getThesis = (id: number) => {
   return request.get<Thesis>(`/thesis/${id}`)
+}
+
+export const reviewThesisWorkflow = (thesisId: number, decision: 'APPROVE' | 'NEED_REVISION') => {
+  return request.post<void>(`/thesis/${thesisId}/workflow`, { decision })
 }
 

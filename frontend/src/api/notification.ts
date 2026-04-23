@@ -7,11 +7,18 @@ export interface Notification {
   content: string
   isRead: number
   relatedId?: number
+  collabStage?: string | null
   createdAt: string
 }
 
 // 获取通知列表
-export const getNotifications = (params?: { isRead?: boolean; limit?: number; type?: string; relatedId?: number }) => {
+export const getNotifications = (params?: {
+  isRead?: boolean
+  limit?: number
+  type?: string
+  relatedId?: number
+  collabStage?: string
+}) => {
   return request.get<Notification[]>('/notifications', { params })
 }
 
@@ -31,9 +38,14 @@ export const markAllNotificationsAsRead = () => {
 }
 
 // 发送聊天消息
-export const sendChatMessage = (targetUserId: number, content: string, relatedId?: number) => {
+export const sendChatMessage = (
+  targetUserId: number,
+  content: string,
+  relatedId?: number,
+  collabStage?: string
+) => {
   return request.post('/notifications/chat', null, {
-    params: { targetUserId, content, relatedId }
+    params: { targetUserId, content, relatedId, collabStage }
   })
 }
 

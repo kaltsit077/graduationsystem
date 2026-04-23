@@ -99,8 +99,21 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <!--
+                      关键：使用 release 固定编译级别，避免被用户环境/全局 settings.xml 中
+                      maven.compiler.source=1.8 之类的属性覆盖导致误用 Java 8 编译。
+                    -->
+                    <release>17</release>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring.boot.version}</version>
                 <configuration>
                     <mainClass>com.example.graduation.GraduationApplication</mainClass>
                 </configuration>

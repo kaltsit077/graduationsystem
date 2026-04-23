@@ -4,11 +4,16 @@
       <template #header>
         <div class="card-header">
           <span>选题与导师信息</span>
+          <div class="card-header-extra">
+            <slot name="headerExtra" />
+          </div>
         </div>
       </template>
       <el-descriptions border :column="2" size="small">
         <el-descriptions-item label="选题标题">{{ application.topicTitle }}</el-descriptions-item>
-        <el-descriptions-item v-if="identity === 'student'" label="导师姓名">{{ peerName }}</el-descriptions-item>
+        <el-descriptions-item v-if="identity === 'student'" label="导师姓名">{{
+          application.teacherName || peerName || '—'
+        }}</el-descriptions-item>
         <el-descriptions-item v-else label="学生姓名">{{ peerName }}</el-descriptions-item>
         <el-descriptions-item label="申请状态">
           <el-tag v-if="application.status === 'APPROVED'" type="success">已通过</el-tag>
@@ -33,7 +38,7 @@
             <div class="card-header">
               <span>作业 / 论文</span>
               <el-button
-                v-if="identity === 'student'"
+                v-if="identity === 'student' && showThesisUploadButton"
                 type="primary"
                 size="small"
                 @click="handleUploadClick"
@@ -84,6 +89,7 @@
               <div v-if="!messages.length" class="chat-empty">暂无消息，去和对方打个招呼吧～</div>
             </el-scrollbar>
             <div class="chat-input">
+              <div v-if="!chatStage" class="chat-pick-stage">请先在左侧进度表中点击一行，选择要对话的环节</div>
               <div class="chat-templates">
                 <span class="chat-templates-label">快捷短语：</span>
                 <el-tag
@@ -112,7 +118,7 @@
                   size="small"
                   @click="send"
                   :loading="sending"
-                  :disabled="!draft.trim()"
+                  :disabled="sendDisabled"
                 >
                   发送
                 </el-button>
@@ -135,7 +141,7 @@
         class="floating-chat-header"
         @mousedown="startDrag"
         @dblclick="toggleCollapsed"
-        @click="chatCollapsed ? toggleCollapsed() : undefined"
+        @click="onFloatingHeaderClick"
       >
         <template v-if="chatCollapsed">
           <div class="bubble">
@@ -182,6 +188,7 @@
               <div v-if="!messages.length" class="chat-empty">暂无消息，去和对方打个招呼吧～</div>
             </el-scrollbar>
             <div class="chat-input">
+              <div v-if="!chatStage" class="chat-pick-stage">请先在进度表中点击一行选择环节</div>
               <div class="chat-templates">
                 <span class="chat-templates-label">快捷短语：</span>
                 <el-tag
@@ -210,7 +217,7 @@
                   size="small"
                   @click="send"
                   :loading="sending"
-                  :disabled="!draft.trim()"
+                  :disabled="sendDisabled"
                 >
                   发送
                 </el-button>
@@ -232,15 +239,25 @@ import type { Application } from '@/api/application'
 import type { Notification } from '@/api/notification'
 import { ChatDotRound } from '@element-plus/icons-vue'
 
-const props = defineProps<{
-  identity: 'student' | 'teacher'
-  application: Application | null
-  messages: Notification[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    identity: 'student' | 'teacher'
+    application: Application | null
+    messages: Notification[]
+    /** 与某毕设环节绑定的会话；未选环节时不允许发送 */
+    chatStage?: string | null
+    /** 为 false 时隐藏卡片标题栏的「上传作业」（由流程表逐行上传） */
+    showThesisUploadButton?: boolean
+  }>(),
+  {
+    chatStage: undefined,
+    showThesisUploadButton: true
+  }
+)
 
 const emit = defineEmits<{
   (e: 'refreshMessages'): void
-  (e: 'sendMessage', content: string): void
+  (e: 'sendMessage', content: string, collabStage: string | null | undefined): void
   (e: 'uploadThesis', application: Application): void
 }>()
 
@@ -259,6 +276,8 @@ const templates = [
 ]
 
 let dragging = false
+let suppressHeaderClickUntil = 0
+let didDrag = false
 let dragStartX = 0
 let dragStartY = 0
 let pointerStartX = 0
@@ -266,8 +285,12 @@ let pointerStartY = 0
 
 const peerName = computed(() => {
   if (!props.application) return ''
-  return props.identity === 'student' ? props.application.studentName || '' : props.application.studentName || ''
+  return props.identity === 'student'
+    ? props.application.teacherName || ''
+    : props.application.studentName || ''
 })
+
+const sendDisabled = computed(() => !draft.value.trim() || !props.chatStage)
 
 watch(
   () => props.application,
@@ -309,7 +332,12 @@ const handleUploadClick = () => {
 
 const startDrag = (event: MouseEvent) => {
   if (viewMode.value !== 'focus') return
+  event.preventDefault()
+  event.stopPropagation()
   dragging = true
+  didDrag = false
+  // 防止拖动结束后触发 header 的 click 事件，导致误触发收起/展开
+  suppressHeaderClickUntil = Date.now() + 800
   dragStartX = chatPosition.value.x
   dragStartY = chatPosition.value.y
   pointerStartX = event.clientX
@@ -320,8 +348,9 @@ const startDrag = (event: MouseEvent) => {
 
 const getFloatingBounds = () => {
   const el = floatingChatRef.value
-  const w = el?.offsetWidth ?? 360
-  const h = el?.offsetHeight ?? 260
+
+  const w = chatCollapsed.value ? 56 : (el?.offsetWidth ?? 360)
+  const h = chatCollapsed.value ? 56 : (el?.offsetHeight ?? 260)
   const baseLeft = 24
   const baseTop = 120
   const pad = 8
@@ -344,16 +373,19 @@ const clampPosition = (pos: { x: number; y: number }) => {
  * - 当视窗较窄导致 maxX=0 时，也不会产生奇怪的跳动
  */
 const snapIfNearEdge = (thresholdPx = 32) => {
-  const { maxX } = getFloatingBounds()
+  const { w, maxX } = getFloatingBounds()
   const cur = clampPosition(chatPosition.value)
 
-  // 离左边很近 → 吸左；离右边很近 → 吸右；否则保持当前位置
+  // “露头”吸附：仅在收起态生效，贴边后把大部分隐藏到屏幕外
+  const peekPx = 18
+  const hidden = Math.max(0, w - peekPx)
+
   if (cur.x <= thresholdPx) {
-    chatPosition.value = { x: 0, y: cur.y }
+    chatPosition.value = chatCollapsed.value ? { x: -hidden, y: cur.y } : { x: 0, y: cur.y }
     return
   }
   if (maxX - cur.x <= thresholdPx) {
-    chatPosition.value = { x: maxX, y: cur.y }
+    chatPosition.value = chatCollapsed.value ? { x: maxX + hidden, y: cur.y } : { x: maxX, y: cur.y }
   }
 }
 
@@ -365,6 +397,10 @@ const onDragging = (event: MouseEvent) => {
 
   const nextX = dragStartX + dx
   const nextY = dragStartY + dy
+  if (!didDrag && Math.abs(dx) + Math.abs(dy) > 3) {
+    didDrag = true
+    suppressHeaderClickUntil = Date.now() + 1200
+  }
 
   chatPosition.value = {
     x: Math.min(Math.max(0, nextX), maxX),
@@ -377,6 +413,8 @@ const stopDrag = () => {
   dragging = false
   window.removeEventListener('mousemove', onDragging)
   window.removeEventListener('mouseup', stopDrag)
+  // mouseup 后浏览器仍可能派发 click，额外延长抑制窗口
+  suppressHeaderClickUntil = Date.now() + 1200
   snapIfNearEdge()
 }
 
@@ -388,9 +426,21 @@ const toggleCollapsed = () => {
   chatCollapsed.value = !chatCollapsed.value
   // 收起/展开会改变宽高，重新夹紧并贴边，避免越界或半遮挡
   requestAnimationFrame(() => {
-    chatPosition.value = clampPosition(chatPosition.value)
+    // 展开态必须完全可见；收起态允许“露头”（x 可为负或超出 maxX）
+    if (!chatCollapsed.value) {
+      chatPosition.value = clampPosition(chatPosition.value)
+    }
     snapIfNearEdge()
   })
+}
+
+const onFloatingHeaderClick = () => {
+  if (Date.now() < suppressHeaderClickUntil) return
+  if (didDrag) return
+  // 仅在「收起态」点击时才展开；展开态点击不做任何事（避免误触）
+  if (chatCollapsed.value) {
+    toggleCollapsed()
+  }
 }
 
 const useTemplate = (text: string) => {
@@ -398,10 +448,10 @@ const useTemplate = (text: string) => {
 }
 
 const send = async () => {
-  if (!draft.value.trim()) return
+  if (!draft.value.trim() || !props.chatStage) return
   sending.value = true
   try {
-    emit('sendMessage', draft.value.trim())
+    emit('sendMessage', draft.value.trim(), props.chatStage)
     draft.value = ''
   } finally {
     sending.value = false
@@ -438,6 +488,12 @@ const send = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.card-header-extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .chat-header-extra {
@@ -525,6 +581,12 @@ const send = async () => {
 .chat-templates-label {
   font-size: 12px;
   color: #909399;
+}
+
+.chat-pick-stage {
+  font-size: 12px;
+  color: #e6a23c;
+  margin-bottom: 6px;
 }
 
 .chat-template-tag {

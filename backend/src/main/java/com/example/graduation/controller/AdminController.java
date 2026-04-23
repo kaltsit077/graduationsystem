@@ -249,6 +249,8 @@ public class AdminController {
         resp.setEnabled(setting.getSelectionEnabled() != null ? setting.getSelectionEnabled() : Boolean.TRUE);
         resp.setStartTime(setting.getSelectionStartTime());
         resp.setEndTime(setting.getSelectionEndTime());
+        resp.setGraduationSeasonStart(setting.getGraduationSeasonStart());
+        resp.setGraduationSeasonEnd(setting.getGraduationSeasonEnd());
         resp.setOpenNow(systemSettingService.isSelectionOpenNow());
         return ApiResponse.success(resp);
     }
@@ -258,15 +260,19 @@ public class AdminController {
      */
     @PostMapping("/selection-setting")
     public ApiResponse<SelectionSettingResponse> updateSelectionSetting(@RequestBody SelectionSettingRequest requestDto) {
-        SystemSetting setting = systemSettingService.updateSelectionSetting(
+        SystemSetting setting = systemSettingService.updateSelectionAndGraduation(
                 requestDto.getEnabled() != null ? requestDto.getEnabled() : Boolean.FALSE,
                 requestDto.getStartTime(),
-                requestDto.getEndTime()
+                requestDto.getEndTime(),
+                requestDto.getGraduationSeasonStart(),
+                requestDto.getGraduationSeasonEnd()
         );
         SelectionSettingResponse resp = new SelectionSettingResponse();
         resp.setEnabled(setting.getSelectionEnabled());
         resp.setStartTime(setting.getSelectionStartTime());
         resp.setEndTime(setting.getSelectionEndTime());
+        resp.setGraduationSeasonStart(setting.getGraduationSeasonStart());
+        resp.setGraduationSeasonEnd(setting.getGraduationSeasonEnd());
         resp.setOpenNow(systemSettingService.isSelectionOpenNow());
         return ApiResponse.success(resp);
     }

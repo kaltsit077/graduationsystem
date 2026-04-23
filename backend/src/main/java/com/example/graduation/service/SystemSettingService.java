@@ -29,12 +29,24 @@ public class SystemSettingService {
     }
 
     public SystemSetting updateSelectionSetting(Boolean enabled, LocalDateTime start, LocalDateTime end) {
+        return updateSelectionAndGraduation(enabled, start, end, null, null);
+    }
+
+    public SystemSetting updateSelectionAndGraduation(
+            Boolean enabled,
+            LocalDateTime selectionStart,
+            LocalDateTime selectionEnd,
+            LocalDateTime graduationStart,
+            LocalDateTime graduationEnd
+    ) {
         SystemSetting setting = getOrCreate();
         if (enabled != null) {
             setting.setSelectionEnabled(enabled);
         }
-        setting.setSelectionStartTime(start);
-        setting.setSelectionEndTime(end);
+        setting.setSelectionStartTime(selectionStart);
+        setting.setSelectionEndTime(selectionEnd);
+        setting.setGraduationSeasonStart(graduationStart);
+        setting.setGraduationSeasonEnd(graduationEnd);
         setting.setUpdatedAt(LocalDateTime.now());
         systemSettingMapper.updateById(setting);
         return setting;

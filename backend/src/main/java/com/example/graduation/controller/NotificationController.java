@@ -57,9 +57,10 @@ public class NotificationController {
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) Long relatedId,
+            @RequestParam(required = false) String collabStage,
             HttpServletRequest request) {
         Long userId = getCurrentUserId(request);
-        List<Notification> notifications = notificationService.getUserNotifications(userId, isRead, type, relatedId, limit);
+        List<Notification> notifications = notificationService.getUserNotifications(userId, isRead, type, relatedId, collabStage, limit);
         
         List<NotificationResponse> responses = notifications.stream()
                 .map(this::convertToResponse)
@@ -76,6 +77,7 @@ public class NotificationController {
             @RequestParam(required = false) Long targetUserId,
             @RequestParam String content,
             @RequestParam(required = false) Long relatedId,
+            @RequestParam(required = false) String collabStage,
             HttpServletRequest request) {
         Long fromUserId = getCurrentUserId(request);
         User fromUser = userMapper.selectById(fromUserId);
@@ -113,7 +115,7 @@ public class NotificationController {
         
         // 1) 给接收方存一份（未读）
         String toTitle = "来自 " + senderName + " 的消息";
-        notificationService.createNotification(realTargetUserId, type, toTitle, content, relatedId, 0);
+        notificationService.createNotification(realTargetUserId, type, toTitle, content, relatedId, collabStage, 0);
 
         // 2) 给发送方也存一份（已读），这样双方都能看到完整对话
         String receiverName = "对方";
@@ -121,8 +123,9 @@ public class NotificationController {
         if (toUser != null && toUser.getRealName() != null && !toUser.getRealName().isBlank()) {
             receiverName = toUser.getRealName();
         }
-        String fromTitle = "我 → " + receiverName;
-        notificationService.createNotification(fromUserId, type, fromTitle, content, relatedId, 1);
+        String stageTag = (collabStage != null && !collabStage.isBlank()) ? (" [" + collabStage + "]") : "";
+        String fromTitle = "我 → " + receiverName + stageTag;
+        notificationService.createNotification(fromUserId, type, fromTitle, content, relatedId, collabStage, 1);
 
         return ApiResponse.success(null);
     }
@@ -167,6 +170,7 @@ public class NotificationController {
         response.setContent(notification.getContent());
         response.setIsRead(notification.getIsRead());
         response.setRelatedId(notification.getRelatedId());
+        response.setCollabStage(notification.getCollabStage());
         response.setCreatedAt(notification.getCreatedAt());
         return response;
     }

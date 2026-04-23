@@ -28,6 +28,9 @@ public class Notification {
     private Integer isRead; // 0-未读，1-已读
     
     private Long relatedId; // 关联对象ID（如选题ID、申请ID等）
+
+    /** 协作消息所属环节（与 CollabStage.name() 一致）；NULL 表示历史未区分环节的会话 */
+    private String collabStage;
     
     private LocalDateTime createdAt;
 }

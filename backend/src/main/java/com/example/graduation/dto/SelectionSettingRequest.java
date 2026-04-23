@@ -15,5 +15,11 @@ public class SelectionSettingRequest {
 
     /** 选题开放结束时间（可选，NULL 表示不限制结束时间） */
     private LocalDateTime endTime;
+
+    /** 毕业季总时间窗开始；导师设置的各环节时间不得早于此（可空表示不限制） */
+    private LocalDateTime graduationSeasonStart;
+
+    /** 毕业季总时间窗结束；导师设置的各环节时间不得晚于此（可空表示不限制） */
+    private LocalDateTime graduationSeasonEnd;
 }
 

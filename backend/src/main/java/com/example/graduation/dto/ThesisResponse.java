@@ -14,6 +14,8 @@ public class ThesisResponse {
     private String fileUrl;
     private String fileName;
     private Long fileSize;
+    /** 环节代码，见 CollabStage */
+    private String stage;
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

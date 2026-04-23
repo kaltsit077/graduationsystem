@@ -64,12 +64,25 @@
               :disabled="!selectionEnabled"
             />
           </div>
+          <div class="selection-row">
+            <span class="selection-label">毕业季总时间：</span>
+            <el-date-picker
+              v-model="graduationSeasonRange"
+              type="datetimerange"
+              range-separator="至"
+              start-placeholder="毕业流程最早"
+              end-placeholder="毕业流程最晚"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              clearable
+            />
+          </div>
           <div class="selection-footer">
             <el-button type="primary" size="small" :loading="savingSelection" @click="saveSelectionSetting">
               保存设置
             </el-button>
             <span class="selection-tip">
-              不设置时间则表示长期开放；关闭开关则无论时间如何都禁止学生选题。
+              不设置时间则表示长期开放；关闭开关则无论时间如何都禁止学生选题。毕业季总时间为空时，导师各环节时间不设上限。
             </span>
           </div>
         </el-card>
@@ -107,6 +120,7 @@ const authStore = useAuthStore()
 const pendingReviewCount = ref(0)
 const selectionEnabled = ref(true)
 const selectionRange = ref<[string, string] | null>(null)
+const graduationSeasonRange = ref<[string, string] | null>(null)
 const selectionOpenNow = ref<boolean | null>(null)
 const savingSelection = ref(false)
 
@@ -136,6 +150,11 @@ const loadSelectionSetting = async () => {
       } else {
         selectionRange.value = null
       }
+      if (res.data.graduationSeasonStart && res.data.graduationSeasonEnd) {
+        graduationSeasonRange.value = [res.data.graduationSeasonStart, res.data.graduationSeasonEnd]
+      } else {
+        graduationSeasonRange.value = null
+      }
       selectionOpenNow.value = res.data.openNow
     }
   } catch (error) {
@@ -164,6 +183,8 @@ const saveSelectionSetting = async () => {
       enabled: boolean
       startTime?: string | null
       endTime?: string | null
+      graduationSeasonStart?: string | null
+      graduationSeasonEnd?: string | null
     } = {
       enabled: selectionEnabled.value
     }
@@ -173,6 +194,13 @@ const saveSelectionSetting = async () => {
     } else {
       payload.startTime = null
       payload.endTime = null
+    }
+    if (graduationSeasonRange.value && graduationSeasonRange.value.length === 2) {
+      payload.graduationSeasonStart = graduationSeasonRange.value[0]
+      payload.graduationSeasonEnd = graduationSeasonRange.value[1]
+    } else {
+      payload.graduationSeasonStart = null
+      payload.graduationSeasonEnd = null
     }
     const res = await updateSelectionSetting(payload)
     selectionOpenNow.value = res.data.openNow

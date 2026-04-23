@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS `topic_application` (
     `topic_id` BIGINT NOT NULL COMMENT '选题ID',
     `student_id` BIGINT NOT NULL COMMENT '学生ID',
     `status` ENUM('PENDING', 'APPROVED', 'REJECTED') NOT NULL DEFAULT 'PENDING' COMMENT '申请状态：待审核/已通过/已拒绝',
+    `approved_lock` TINYINT GENERATED ALWAYS AS (CASE WHEN `status` = 'APPROVED' THEN 1 ELSE NULL END) STORED COMMENT '用于约束同题仅一人通过（NULL 可重复）',
     `remark` TEXT COMMENT '学生申请备注',
     `teacher_feedback` TEXT COMMENT '导师反馈',
     `match_score` DECIMAL(5,4) DEFAULT NULL COMMENT '匹配度得分（0-1之间）',
@@ -139,6 +140,7 @@ CREATE TABLE IF NOT EXISTS `topic_application` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_topic_student` (`topic_id`, `student_id`),
+    UNIQUE KEY `uk_topic_approved` (`topic_id`, `approved_lock`),
     KEY `idx_student_id` (`student_id`),
     KEY `idx_status` (`status`),
     KEY `idx_match_score` (`match_score`),
@@ -154,7 +156,8 @@ CREATE TABLE IF NOT EXISTS `thesis` (
     `file_url` VARCHAR(500) NOT NULL COMMENT '文件存储路径',
     `file_name` VARCHAR(255) NOT NULL COMMENT '文件原名',
     `file_size` BIGINT NOT NULL COMMENT '文件大小（字节）',
-    `status` ENUM('UPLOADED', 'REVIEWED') NOT NULL DEFAULT 'UPLOADED' COMMENT '状态：已上传/已评审',
+    `stage` VARCHAR(64) DEFAULT NULL COMMENT '协作环节代码，见后端 CollabStage',
+    `status` VARCHAR(32) NOT NULL DEFAULT 'UPLOADED' COMMENT 'UPLOADED审核中/NEED_REVISION退回/REVIEWED已通过',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
@@ -211,6 +214,7 @@ CREATE TABLE IF NOT EXISTS `notification` (
     `content` TEXT COMMENT '通知内容',
     `is_read` TINYINT NOT NULL DEFAULT 0 COMMENT '是否已读：0-未读，1-已读',
     `related_id` BIGINT DEFAULT NULL COMMENT '关联对象ID（如选题ID、申请ID等）',
+    `collab_stage` VARCHAR(64) DEFAULT NULL COMMENT '协作消息所属环节',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`),
     KEY `idx_user_id` (`user_id`),
@@ -267,9 +271,24 @@ CREATE TABLE IF NOT EXISTS `system_setting` (
     `selection_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '选题系统是否启用全局开关（0-关闭，1-开启）',
     `selection_start_time` DATETIME DEFAULT NULL COMMENT '选题开放开始时间（可选，NULL 表示不限制开始时间）',
     `selection_end_time` DATETIME DEFAULT NULL COMMENT '选题开放结束时间（可选，NULL 表示不限制结束时间）',
+    `graduation_season_start` DATETIME DEFAULT NULL COMMENT '毕业季总时间窗起（导师环节时间不得超出）',
+    `graduation_season_end` DATETIME DEFAULT NULL COMMENT '毕业季总时间窗止',
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近更新时间',
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统全局设置表';
+
+CREATE TABLE IF NOT EXISTS `collab_stage_window` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `application_id` BIGINT NOT NULL COMMENT '选题申请ID',
+    `stage` VARCHAR(64) NOT NULL COMMENT '环节代码',
+    `window_start` DATETIME DEFAULT NULL COMMENT '环节开放开始',
+    `window_end` DATETIME DEFAULT NULL COMMENT '环节开放结束',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_app_stage` (`application_id`, `stage`),
+    KEY `idx_application_id` (`application_id`),
+    CONSTRAINT `fk_csw_app` FOREIGN KEY (`application_id`) REFERENCES `topic_application` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='导师为各协作环节配置的时间窗';
 
 -- 插入初始数据（可选）
 

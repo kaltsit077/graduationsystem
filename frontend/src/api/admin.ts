@@ -67,6 +67,8 @@ export interface SelectionSetting {
   enabled: boolean
   startTime?: string | null
   endTime?: string | null
+  graduationSeasonStart?: string | null
+  graduationSeasonEnd?: string | null
   openNow: boolean
 }
 
@@ -78,6 +80,8 @@ export const updateSelectionSetting = (data: {
   enabled: boolean
   startTime?: string | null
   endTime?: string | null
+  graduationSeasonStart?: string | null
+  graduationSeasonEnd?: string | null
 }) => {
   return request.post<SelectionSetting>('/admin/selection-setting', data)
 }

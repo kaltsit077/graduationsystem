@@ -3,6 +3,8 @@ package com.example.graduation.controller;
 import com.example.graduation.common.ApiResponse;
 import com.example.graduation.dto.ThesisResponse;
 import com.example.graduation.dto.ThesisUploadRequest;
+import com.example.graduation.dto.ThesisWorkflowRequest;
+import com.example.graduation.entity.CollabStage;
 import com.example.graduation.entity.Thesis;
 import com.example.graduation.entity.Topic;
 import com.example.graduation.entity.User;
@@ -50,6 +52,18 @@ public class ThesisController {
     private Long getCurrentUserId(HttpServletRequest request) {
         return (Long) request.getAttribute("userId");
     }
+
+    private String getCurrentUserRole(HttpServletRequest request) {
+        Object role = request.getAttribute("role");
+        return role != null ? role.toString() : "";
+    }
+
+    private static CollabStage resolveUploadStage(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return CollabStage.PRE_DEFENSE_THESIS;
+        }
+        return CollabStage.fromCode(raw);
+    }
     
     /**
      * 上传论文
@@ -59,13 +73,15 @@ public class ThesisController {
             @RequestBody ThesisUploadRequest requestDto,
             HttpServletRequest request) {
         Long studentId = getCurrentUserId(request);
-        
+        CollabStage stage = resolveUploadStage(requestDto.getStage());
+
         Thesis thesis = thesisService.uploadThesis(
                 requestDto.getTopicId(),
                 studentId,
                 requestDto.getFileUrl(),
                 requestDto.getFileName(),
-                requestDto.getFileSize()
+                requestDto.getFileSize(),
+                stage
         );
         
         ThesisResponse response = convertToResponse(thesis);
@@ -78,10 +94,12 @@ public class ThesisController {
     @PostMapping("/upload-file")
     public ApiResponse<ThesisResponse> uploadThesisFile(
             @RequestParam("topicId") Long topicId,
+            @RequestParam(value = "stage", required = false) String stageParam,
             @RequestParam("file") MultipartFile file,
             HttpServletRequest request
     ) throws IOException {
         Long studentId = getCurrentUserId(request);
+        CollabStage stage = resolveUploadStage(stageParam);
 
         if (topicId == null) {
             throw new RuntimeException("topicId 不能为空");
@@ -103,17 +121,21 @@ public class ThesisController {
         }
 
         Path root = Paths.get(uploadDir).toAbsolutePath().normalize();
-        Path dir = root.resolve("thesis");
+        Path baseThesis = root.resolve("thesis");
+        Path dir = baseThesis
+                .resolve("student-" + studentId)
+                .resolve("topic-" + topicId)
+                .resolve(stage.name());
         Files.createDirectories(dir);
 
-        String filename = "t" + topicId + "-s" + studentId + "-" + UUID.randomUUID() + "." + ext;
+        String filename = stage.name().toLowerCase(Locale.ROOT) + "-" + UUID.randomUUID() + "." + ext;
         Path target = dir.resolve(filename).normalize();
-        if (!target.startsWith(dir)) {
+        if (!target.startsWith(baseThesis)) {
             throw new RuntimeException("非法文件路径");
         }
         file.transferTo(target.toFile());
 
-        String url = "/uploads/thesis/" + filename;
+        String url = "/uploads/thesis/student-" + studentId + "/topic-" + topicId + "/" + stage.name() + "/" + filename;
         String fileName = original == null || original.trim().isEmpty() ? filename : original.trim();
         long fileSize = file.getSize();
 
@@ -122,7 +144,8 @@ public class ThesisController {
                 studentId,
                 url,
                 fileName,
-                fileSize
+                fileSize,
+                stage
         );
 
         ThesisResponse response = convertToResponse(thesis);
@@ -172,6 +195,28 @@ public class ThesisController {
         ThesisResponse response = convertToResponse(thesis);
         return ApiResponse.success(response);
     }
+
+    /**
+     * 导师/管理员：环节稿件审核（通过 / 退回修改）
+     */
+    @PostMapping("/{id}/workflow")
+    public ApiResponse<Void> workflow(
+            @PathVariable Long id,
+            @RequestBody ThesisWorkflowRequest body,
+            HttpServletRequest request
+    ) {
+        if (body.getDecision() == null) {
+            return ApiResponse.error("缺少 decision");
+        }
+        String d = body.getDecision().trim().toUpperCase();
+        boolean approve = "APPROVE".equals(d) || "APPROVED".equals(d);
+        boolean reject = "NEED_REVISION".equals(d) || "REJECT".equals(d);
+        if (!approve && !reject) {
+            return ApiResponse.error("decision 仅支持 APPROVE 或 NEED_REVISION");
+        }
+        thesisService.reviewThesisWorkflow(id, getCurrentUserId(request), getCurrentUserRole(request), approve);
+        return ApiResponse.success(null);
+    }
     
     /**
      * 转换Thesis实体为ThesisResponse
@@ -184,6 +229,7 @@ public class ThesisController {
         response.setFileUrl(thesis.getFileUrl());
         response.setFileName(thesis.getFileName());
         response.setFileSize(thesis.getFileSize());
+        response.setStage(thesis.getStage());
         response.setStatus(thesis.getStatus() != null ? thesis.getStatus().name() : null);
         response.setCreatedAt(thesis.getCreatedAt());
         response.setUpdatedAt(thesis.getUpdatedAt());

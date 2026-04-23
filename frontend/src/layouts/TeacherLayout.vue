@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { HomeFilled, Document, List, User, ArrowDown, SwitchButton } from '@element-plus/icons-vue'
@@ -103,6 +103,7 @@ const activeMenu = computed(() => route.path)
 const isAsideCollapsed = ref(false)
 const squareBackAnimating = ref(false)
 const asideWidth = computed(() => (isAsideCollapsed.value ? '64px' : '220px'))
+const isMobile = () => window.matchMedia('(max-width: 768px)').matches
 
 const layoutBgStyle = computed(() => {
   const url = authStore.backgroundUrl
@@ -130,6 +131,14 @@ const layoutBgStyle = computed(() => {
 })
 
 onMounted(async () => {
+  isAsideCollapsed.value = isMobile()
+
+  const onResize = () => {
+    if (isMobile()) isAsideCollapsed.value = true
+  }
+  window.addEventListener('resize', onResize, { passive: true })
+  onUnmounted(() => window.removeEventListener('resize', onResize))
+
   if (authStore.isAuthenticated() && !authStore.backgroundUrl) {
     try {
       const res = await getMyBackground()
@@ -494,6 +503,35 @@ const handleCommand = async (command: string) => {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .layout-header {
+    padding: 0 12px;
+  }
+
+  .header-left h2 {
+    font-size: 14px;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 62vw;
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .layout-main {
+    padding: 10px 10px;
+  }
+
+  .page-wrapper {
+    max-width: 100%;
+    padding: 14px 12px;
+    border-radius: 14px;
   }
 }
 </style>
