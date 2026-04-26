@@ -31,17 +31,9 @@ RUN mkdir -p /root/.m2 && \
     echo "  </mirrors>" >> /root/.m2/settings.xml && \
     echo "</settings>" >> /root/.m2/settings.xml
 
-# 优先复制 pom.xml（利用 Docker 缓存，依赖不变时无需重新下载）
-COPY pom.xml .
-
-# 预下载依赖（可选，进一步加速构建）
-RUN mvn dependency:go-offline -DskipTests
-
-# 复制源代码
+# 优先复制 pom.xml
 COPY src ./src
-
-# 构建应用（跳过测试）
-RUN mvn clean package -DskipTests
+RUN mvn -DskipTests clean package
 
 # 阶段2: 运行阶段（与阶段1 使用同一代理前缀；此处再声明一次，兼容旧版 Docker 多阶段 ARG 作用域）
 ARG DOCKERHUB_PROXY=docker.m.daocloud.io
