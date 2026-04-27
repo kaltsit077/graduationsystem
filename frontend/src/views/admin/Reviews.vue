@@ -15,6 +15,7 @@
         <el-table-column prop="createdAt" label="提交时间" width="180" />
         <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
+            <el-button size="small" @click="openTopicDetail(row)">详情</el-button>
             <el-button type="success" size="small" @click="reviewTopic(row, 'PASS')">通过</el-button>
             <el-button type="danger" size="small" @click="reviewTopic(row, 'REJECT')">驳回</el-button>
           </template>
@@ -50,6 +51,35 @@
         <el-button type="primary" @click="submitReview" :loading="reviewing">确定</el-button>
       </template>
     </AppDialog>
+
+    <AppDialog
+      v-model="detailDialogVisible"
+      title="选题详情"
+      width="720px"
+      :close-on-click-modal="false"
+    >
+      <div v-loading="detailLoading">
+        <el-descriptions v-if="detailTopic" :column="2" border>
+          <el-descriptions-item label="选题标题" :span="2">{{ detailTopic.title }}</el-descriptions-item>
+          <el-descriptions-item label="导师">{{ detailTopic.teacherName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="最大人数">{{ detailTopic.maxApplicants ?? '-' }}</el-descriptions-item>
+          <el-descriptions-item label="提交时间">{{ detailTopic.createdAt || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ detailTopic.status || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="标签" :span="2">
+            <template v-if="detailTopic.tags && detailTopic.tags.length">
+              <el-tag v-for="tag in detailTopic.tags" :key="tag" size="small" class="detail-tag">{{ tag }}</el-tag>
+            </template>
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="详细描述" :span="2">
+            <div class="topic-description">{{ detailTopic.description || '暂无描述' }}</div>
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+      <template #footer>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -58,13 +88,16 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import AppDialog from '@/components/AppDialog.vue'
 import request from '@/api/request'
-import type { Topic } from '@/api/topic'
+import { getTopic, type Topic } from '@/api/topic'
 
 const loading = ref(false)
 const topics = ref<Topic[]>([])
 const reviewDialogVisible = ref(false)
 const reviewing = ref(false)
 const currentTopic = ref<Topic | null>(null)
+const detailDialogVisible = ref(false)
+const detailLoading = ref(false)
+const detailTopic = ref<Topic | null>(null)
 
 const reviewForm = ref({
   result: 'PASS',
@@ -94,6 +127,21 @@ const reviewTopic = (topic: Topic, result: string) => {
     comment: ''
   }
   reviewDialogVisible.value = true
+}
+
+const openTopicDetail = async (topic: Topic) => {
+  detailDialogVisible.value = true
+  detailLoading.value = true
+  detailTopic.value = null
+  try {
+    const res = await getTopic(topic.id)
+    detailTopic.value = res.data || topic
+  } catch {
+    detailTopic.value = topic
+    ElMessage.warning('加载完整详情失败，已展示列表中的基础信息')
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 const submitReview = async () => {
@@ -126,6 +174,16 @@ const submitReview = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.topic-description {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.detail-tag {
+  margin-right: 6px;
+  margin-bottom: 6px;
 }
 </style>
 

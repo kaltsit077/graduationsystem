@@ -33,6 +33,47 @@ scripts\docker-dev-up.bat
 
 详细说明请参考：[docs/docker/DOCKER_DEV_GUIDE.md](docs/docker/DOCKER_DEV_GUIDE.md)
 
+### 方式三：手动跑一遍 dev 构建/启动流程
+
+在项目根目录执行以下命令：
+
+```bash
+# 前台启动（便于直接看日志）
+docker compose -f docker-compose.dev.yml up
+```
+
+```bash
+# 后台启动
+docker compose -f docker-compose.dev.yml up -d
+```
+
+如需同时启动 embedding 服务：
+
+```bash
+docker compose -f docker-compose.dev.yml --profile embedding up -d --build
+```
+
+查看关键服务日志：
+
+```bash
+docker compose -f docker-compose.dev.yml logs -f backend
+docker compose -f docker-compose.dev.yml logs -f frontend
+```
+
+需要干净重启时：
+
+```bash
+docker compose -f docker-compose.dev.yml down
+docker compose -f docker-compose.dev.yml up -d
+```
+
+仅验证前端生产打包（不走 Compose）：
+
+```bash
+cd frontend
+npm run build
+```
+
 ## 📚 文档导航
 
 ### 🎯 快速指南

@@ -93,6 +93,11 @@ let ratioChart: echarts.ECharts | null = null
 const bubbleChartRef = ref<HTMLDivElement | null>(null)
 let bubbleChart: echarts.ECharts | null = null
 
+const truncateAxisLabel = (value: string, max = 10) => {
+  if (!value) return ''
+  return value.length > max ? `${value.slice(0, max)}...` : value
+}
+
 const initCharts = () => {
   if (scoreChartRef.value && !scoreChart) {
     scoreChart = echarts.init(scoreChartRef.value)
@@ -116,8 +121,19 @@ const updateCharts = () => {
 
   if (scoreChart) {
     scoreChart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: names, axisLabel: { rotate: 30 } },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const items = Array.isArray(params) ? params : [params]
+          const idx = items[0]?.dataIndex ?? 0
+          const title = metrics.value[idx]?.topicTitle || items[0]?.axisValue || ''
+          const body = items
+            .map((it: any) => `${it.marker}${it.seriesName}：${it.value ?? '—'}`)
+            .join('<br/>')
+          return `<div style="font-weight:600;margin-bottom:4px;">${title}</div>${body}`
+        }
+      },
+      xAxis: { type: 'category', data: names, axisLabel: { rotate: 30, formatter: (v: string) => truncateAxisLabel(v) } },
       yAxis: { type: 'value', min: 0, max: 100 },
       series: [
         {
@@ -132,9 +148,24 @@ const updateCharts = () => {
 
   if (ratioChart) {
     const common = {
-      tooltip: { trigger: 'axis' },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const items = Array.isArray(params) ? params : [params]
+          const idx = items[0]?.dataIndex ?? 0
+          const title = metrics.value[idx]?.topicTitle || items[0]?.axisValue || ''
+          const body = items
+            .map((it: any) => `${it.marker}${it.seriesName}：${Number(it.value ?? 0).toFixed(0)}%`)
+            .join('<br/>')
+          return `<div style="font-weight:600;margin-bottom:4px;">${title}</div>${body}`
+        }
+      },
       legend: { data: ['优秀率', '不及格率'] },
-      xAxis: { type: 'category' as const, data: names, axisLabel: { rotate: 30 } },
+      xAxis: {
+        type: 'category' as const,
+        data: names,
+        axisLabel: { rotate: 30, formatter: (v: string) => truncateAxisLabel(v) }
+      },
       yAxis: { type: 'value' as const, min: 0, max: 100, axisLabel: { formatter: '{value}%' } }
     }
     ratioChart.setOption({

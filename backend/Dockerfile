@@ -31,7 +31,8 @@ RUN mkdir -p /root/.m2 && \
     echo "  </mirrors>" >> /root/.m2/settings.xml && \
     echo "</settings>" >> /root/.m2/settings.xml
 
-# 优先复制 pom.xml
+# 复制 Maven 项目文件（pom.xml 必须先复制，否则 mvn 找不到项目）
+COPY pom.xml ./
 COPY src ./src
 RUN mvn -DskipTests clean package
 

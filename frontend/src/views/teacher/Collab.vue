@@ -12,6 +12,22 @@
     >
       <template #headerExtra>
         <el-button
+          v-if="approvedApplication?.status === 'COMPLETION_PENDING'"
+          type="success"
+          size="small"
+          @click="openCompletionReview(true)"
+        >
+          通过结题
+        </el-button>
+        <el-button
+          v-if="approvedApplication?.status === 'COMPLETION_PENDING'"
+          type="danger"
+          size="small"
+          @click="openCompletionReview(false)"
+        >
+          退回结题
+        </el-button>
+        <el-button
           type="primary"
           size="small"
           :disabled="!approvedApplication"
@@ -88,18 +104,18 @@
                       >
                         打开文件
                       </el-dropdown-item>
-                      <el-dropdown-item :disabled="!row.latestThesisId" @click="openEvalDialog(row)">
+                      <el-dropdown-item :disabled="!canInputScore(row)" @click="openEvalDialog(row)">
                         录入成绩
                       </el-dropdown-item>
                       <el-dropdown-item
                         divided
-                        :disabled="!row.latestThesisId || row.submissionStatus !== 'UNDER_REVIEW'"
+                        :disabled="isCompletionPending || !row.latestThesisId || row.submissionStatus !== 'UNDER_REVIEW'"
                         @click="doWorkflow(row, 'APPROVE')"
                       >
                         审核通过
                       </el-dropdown-item>
                       <el-dropdown-item
-                        :disabled="!row.latestThesisId || row.submissionStatus !== 'UNDER_REVIEW'"
+                        :disabled="isCompletionPending || !row.latestThesisId || row.submissionStatus !== 'UNDER_REVIEW'"
                         @click="doWorkflow(row, 'NEED_REVISION')"
                       >
                         退回修改
@@ -194,6 +210,18 @@
         <el-button type="primary" :loading="savingWindows" @click="submitWindows">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="completionDialogVisible" :title="completionApprove ? '通过结题申请' : '退回结题申请'" width="520px">
+      <el-form :model="completionForm" label-width="90px">
+        <el-form-item label="审核意见">
+          <el-input v-model="completionForm.feedback" type="textarea" :rows="4" placeholder="可填写审核意见（可选）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="completionDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingCompletion" @click="submitCompletionReview">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -202,7 +230,7 @@ import { computed, ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import CollabPanel from '@/components/CollabPanel.vue'
-import { getTopicApplications, type Application } from '@/api/application'
+import { getTopicApplications, reviewCompletionRequest, type Application } from '@/api/application'
 import { getTopics } from '@/api/topic'
 import { getNotifications, sendChatMessage, type Notification } from '@/api/notification'
 import { saveThesisEvaluation, getThesisEvaluation } from '@/api/evaluation'
@@ -240,11 +268,23 @@ const windowEditorRows = ref<WindowEditorRow[]>([])
 const savingWindows = ref(false)
 
 const studentSelectDialogVisible = ref(false)
+const SCORE_ENTRY_STAGE = 'THESIS_DEFENSE'
 
 const approvedApplication = computed(() => {
   const manual = applications.value.find((a) => a.id === currentApplicationId.value)
   if (manual) return manual
-  return applications.value.find((a) => a.status === 'APPROVED') || null
+  return applications.value.find((a) => a.status === 'APPROVED')
+    || applications.value.find((a) => a.status === 'COMPLETION_PENDING')
+    || applications.value.find((a) => a.status === 'COMPLETION_REJECTED')
+    || null
+})
+const isCompletionPending = computed(() => approvedApplication.value?.status === 'COMPLETION_PENDING')
+
+const completionDialogVisible = ref(false)
+const completionApprove = ref(true)
+const savingCompletion = ref(false)
+const completionForm = ref({
+  feedback: ''
 })
 
 const currentStudentText = computed(() => {
@@ -340,7 +380,9 @@ const loadApplications = async () => {
       const appsRes = await getTopicApplications(t.id, true)
       all.push(...(appsRes.data || []))
     }
-    applications.value = all.filter((a) => a.status === 'APPROVED')
+    applications.value = all.filter(
+      (a) => a.status === 'APPROVED' || a.status === 'COMPLETION_PENDING' || a.status === 'COMPLETION_REJECTED'
+    )
     if (!currentApplicationId.value && applications.value.length) {
       currentApplicationId.value = applications.value[0].id
     }
@@ -367,6 +409,7 @@ const loadProgress = async () => {
     loadingProgress.value = false
   }
 }
+
 
 const loadMessages = async () => {
   if (!approvedApplication.value || !selectedChatStage.value) {
@@ -426,6 +469,7 @@ async function openThesisFile(id: number) {
     const res = await getThesis(id)
     const url = res.data?.fileUrl
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    else if (res.data?.downloadExpired) ElMessage.warning('该文件下载已过期')
     else ElMessage.warning('未找到文件地址')
   } catch {
     ElMessage.error('无法打开文件')
@@ -433,7 +477,15 @@ async function openThesisFile(id: number) {
 }
 
 const openEvalDialog = (row: StageProgressItem) => {
+  if (isCompletionPending.value) {
+    ElMessage.warning('结题审核中，评分入口已锁定')
+    return
+  }
   if (!row.latestThesisId) return
+  if (row.stage !== SCORE_ENTRY_STAGE) {
+    ElMessage.warning('仅允许在「论文答辩」环节录入论文总成绩')
+    return
+  }
   evalThesisId.value = row.latestThesisId
   evalForm.value = {
     score: undefined,
@@ -457,6 +509,10 @@ const openEvalDialog = (row: StageProgressItem) => {
     }
   })()
   evalDialogVisible.value = true
+}
+
+const canInputScore = (row: StageProgressItem) => {
+  return !isCompletionPending.value && !!row.latestThesisId && row.stage === SCORE_ENTRY_STAGE
 }
 
 const submitEval = async () => {
@@ -486,7 +542,7 @@ const submitEval = async () => {
 }
 
 function openWindowDialog() {
-  if (!approvedApplication.value) return
+  if (!approvedApplication.value || isCompletionPending.value) return
   windowEditorRows.value = progressRows.value.map((r) => {
     let range: [string, string] | null = null
     if (r.windowStart && r.windowEnd) {
@@ -501,8 +557,38 @@ function openWindowDialog() {
   windowDialogVisible.value = true
 }
 
-const submitWindows = async () => {
+const openCompletionReview = (approve: boolean) => {
   if (!approvedApplication.value) return
+  if (approvedApplication.value.status !== 'COMPLETION_PENDING') {
+    ElMessage.warning('当前不在结题待审核状态')
+    return
+  }
+  completionApprove.value = approve
+  completionForm.value = { feedback: '' }
+  completionDialogVisible.value = true
+}
+
+const submitCompletionReview = async () => {
+  if (!approvedApplication.value) return
+  savingCompletion.value = true
+  try {
+    await reviewCompletionRequest(approvedApplication.value.id, {
+      status: completionApprove.value ? 'APPROVED' : 'REJECTED',
+      feedback: completionForm.value.feedback
+    })
+    ElMessage.success('结题审核已提交')
+    completionDialogVisible.value = false
+    await loadApplications()
+    await loadProgress()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '提交失败')
+  } finally {
+    savingCompletion.value = false
+  }
+}
+
+const submitWindows = async () => {
+  if (!approvedApplication.value || isCompletionPending.value) return
   savingWindows.value = true
   try {
     const items = windowEditorRows.value.map((row) => {
@@ -642,4 +728,5 @@ onMounted(async () => {
   margin-left: 2px;
   font-size: 12px;
 }
+
 </style>

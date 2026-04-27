@@ -215,6 +215,7 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         );
 
         migrateThesisStatusColumnIfNeeded();
+        migrateTopicApplicationStatusEnumIfNeeded();
 
         ensureColumnExists(
                 "notification",
@@ -262,6 +263,39 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
                 }
                 log.info("迁移完成：thesis.status 已改为 VARCHAR");
             }
+        }
+    }
+
+    private void migrateTopicApplicationStatusEnumIfNeeded() throws Exception {
+        try (Connection conn = dataSource.getConnection()) {
+            if (!tableExists(conn, "topic_application") || !columnExists(conn, "topic_application", "status")) {
+                return;
+            }
+            String columnType = null;
+            String sql = "SELECT COLUMN_TYPE FROM information_schema.COLUMNS " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'topic_application' AND COLUMN_NAME = 'status'";
+            try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+                if (rs.next()) {
+                    columnType = rs.getString(1);
+                }
+            }
+            if (columnType == null) {
+                return;
+            }
+            String lower = columnType.toLowerCase();
+            if (!lower.contains("enum")) {
+                return;
+            }
+            if (lower.contains("completion_pending") && lower.contains("completion_rejected") && lower.contains("completed")) {
+                return;
+            }
+            log.warn("检测到 topic_application.status ENUM 未包含结题状态，将执行迁移扩展枚举值");
+            try (Statement st = conn.createStatement()) {
+                st.execute("ALTER TABLE topic_application MODIFY COLUMN status " +
+                        "ENUM('PENDING','APPROVED','REJECTED','COMPLETION_PENDING','COMPLETION_REJECTED','COMPLETED') " +
+                        "NOT NULL DEFAULT 'PENDING'");
+            }
+            log.info("迁移完成：topic_application.status 已扩展支持结题状态");
         }
     }
 

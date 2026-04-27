@@ -1,4 +1,5 @@
 import request from './request'
+import type { Topic } from './topic'
 
 export type MentorApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
 
@@ -55,6 +56,11 @@ export const getTeacherPendingMentorApplications = () => {
   return request.get<MentorApplication[]>('/mentor-applications/teacher/pending')
 }
 
+// 导师端：查看全部拜师申请（含已处理）
+export const getTeacherMentorApplications = () => {
+  return request.get<MentorApplication[]>('/mentor-applications/teacher')
+}
+
 // 导师端：审批拜师申请
 export const submitMentorApplicationDecision = (
   id: number,
@@ -71,5 +77,10 @@ export const assignTopicForMentorApplication = (id: number, topicId: number) => 
   return request.post<void>(`/mentor-applications/${id}/assign-topic`, null, {
     params: { topicId }
   })
+}
+
+// 导师端：查看某条拜师申请可指派题目（含该学生匹配度）
+export const getAssignableTopicsForMentorApplication = (id: number) => {
+  return request.get<Topic[]>(`/mentor-applications/${id}/assignable-topics`)
 }
 

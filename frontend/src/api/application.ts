@@ -48,3 +48,13 @@ export const processApplication = (id: number, data: ApplicationProcessRequest) 
   return request.post(`/applications/${id}/process`, data)
 }
 
+// 学生发起结题申请
+export const submitCompletionRequest = (id: number) => {
+  return request.post<void>(`/applications/${id}/completion-request`)
+}
+
+// 导师审核结题申请
+export const reviewCompletionRequest = (id: number, data: ApplicationProcessRequest) => {
+  return request.post<void>(`/applications/${id}/completion-review`, data)
+}
+

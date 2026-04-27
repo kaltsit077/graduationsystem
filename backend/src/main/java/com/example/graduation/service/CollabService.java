@@ -82,8 +82,11 @@ public class CollabService {
 
     public List<CollabStageProgressItemResponse> buildProgress(Long applicationId, Long userId, String role) {
         TopicApplication app = applicationMapper.selectById(applicationId);
-        if (app == null || app.getStatus() != TopicApplication.ApplicationStatus.APPROVED) {
-            throw new RuntimeException("申请不存在或未通过");
+        if (app == null || (app.getStatus() != TopicApplication.ApplicationStatus.APPROVED
+                && app.getStatus() != TopicApplication.ApplicationStatus.COMPLETION_PENDING
+                && app.getStatus() != TopicApplication.ApplicationStatus.COMPLETION_REJECTED
+                && app.getStatus() != TopicApplication.ApplicationStatus.COMPLETED)) {
+            throw new RuntimeException("申请不存在或状态不可用");
         }
         assertApplicationParticipant(userId, role, app);
 
@@ -188,23 +191,21 @@ public class CollabService {
     }
 
     private static String resolveSubmissionStatus(String access, Thesis latest) {
+        // 对导师审核来说，只要已有稿件，就应按稿件状态展示，不应被时间窗覆盖成 NONE。
+        if (latest != null) {
+            Thesis.ThesisStatus s = latest.getStatus();
+            if (s == Thesis.ThesisStatus.NEED_REVISION) {
+                return "NEED_REVISION";
+            }
+            if (s == Thesis.ThesisStatus.REVIEWED) {
+                return "APPROVED";
+            }
+            return "UNDER_REVIEW";
+        }
         if (!"OPEN".equals(access)) {
             return "NONE";
         }
-        if (latest == null) {
-            return "PENDING_SUBMIT";
-        }
-        Thesis.ThesisStatus s = latest.getStatus();
-        if (s == null) {
-            return "UNDER_REVIEW";
-        }
-        if (s == Thesis.ThesisStatus.NEED_REVISION) {
-            return "NEED_REVISION";
-        }
-        if (s == Thesis.ThesisStatus.REVIEWED) {
-            return "APPROVED";
-        }
-        return "UNDER_REVIEW";
+        return "PENDING_SUBMIT";
     }
 
     private static String labelSubmission(String code) {

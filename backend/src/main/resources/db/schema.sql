@@ -131,7 +131,8 @@ CREATE TABLE IF NOT EXISTS `topic_application` (
     `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '申请ID',
     `topic_id` BIGINT NOT NULL COMMENT '选题ID',
     `student_id` BIGINT NOT NULL COMMENT '学生ID',
-    `status` ENUM('PENDING', 'APPROVED', 'REJECTED') NOT NULL DEFAULT 'PENDING' COMMENT '申请状态：待审核/已通过/已拒绝',
+    `status` ENUM('PENDING', 'APPROVED', 'REJECTED', 'COMPLETION_PENDING', 'COMPLETION_REJECTED', 'COMPLETED')
+        NOT NULL DEFAULT 'PENDING' COMMENT '申请状态：待审核/已通过/已拒绝/结题待审核/结题未通过/已结题',
     `approved_lock` TINYINT GENERATED ALWAYS AS (CASE WHEN `status` = 'APPROVED' THEN 1 ELSE NULL END) STORED COMMENT '用于约束同题仅一人通过（NULL 可重复）',
     `remark` TEXT COMMENT '学生申请备注',
     `teacher_feedback` TEXT COMMENT '导师反馈',

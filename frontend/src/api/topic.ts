@@ -45,6 +45,15 @@ export interface AiGeneratedTopic {
   passed: boolean
 }
 
+export interface AiGenerateTopicsResult {
+  topics: AiGeneratedTopic[]
+  generatedCount: number
+  passedCount: number
+  eliminatedCount: number
+  returnedCount: number
+  desiredCount: number
+}
+
 // 获取已开放的选题列表（学生端）
 export const getOpenTopics = () => {
   return request.get<Topic[]>('/topics/open')
@@ -91,6 +100,16 @@ export const deleteTopic = (id: number) => {
   return request.delete(`/topics/${id}`)
 }
 
+// 下架选题（仅已开放）
+export const closeTopic = (id: number) => {
+  return request.post<void>(`/topics/${id}/close`)
+}
+
+// 重新开放选题（仅已关闭）
+export const reopenTopic = (id: number) => {
+  return request.post<void>(`/topics/${id}/reopen`)
+}
+
 /** 导师 AI 选题生成请求：多维度选题需求均为可选，信息越完整生成越贴近需求 */
 export interface AiGenerateTopicsParams {
   count?: number
@@ -106,6 +125,6 @@ export interface AiGenerateTopicsParams {
 
 // 基于导师标签的 AI 选题生成（可能调用外部大模型，延迟较高，单独拉长超时时间）
 export const generateAiTopics = (data: AiGenerateTopicsParams) => {
-  return request.post<AiGeneratedTopic[]>('/topics/ai-generate', data, { timeout: 300000 })
+  return request.post<AiGenerateTopicsResult>('/topics/ai-generate', data, { timeout: 300000 })
 }
 

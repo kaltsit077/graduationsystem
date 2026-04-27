@@ -58,23 +58,21 @@ public enum CollabStage {
     }
 
     public Phase getPhase() {
-        switch (this) {
-            case TASK_BOOK:
-            case OPENING_REPORT:
-            case LITERATURE_REVIEW:
-            case MID_TERM:
-                return Phase.BEFORE_MIDTERM;
-            case GUIDANCE_RECORD:
-            case PRE_DEFENSE_THESIS:
-            case DEFENSE_APPLICATION:
-            case THESIS_REVISION:
-            case BLIND_REVIEW_BEFORE_DEFENSE:
-            case THESIS_DEFENSE:
-                return Phase.BEFORE_DEFENSE;
-            case FINAL_AFTER_DEFENSE:
-            default:
-                return Phase.AFTER_DEFENSE;
+        if (this == TASK_BOOK
+                || this == OPENING_REPORT
+                || this == LITERATURE_REVIEW
+                || this == MID_TERM) {
+            return Phase.BEFORE_MIDTERM;
         }
+        if (this == GUIDANCE_RECORD
+                || this == PRE_DEFENSE_THESIS
+                || this == DEFENSE_APPLICATION
+                || this == THESIS_REVISION
+                || this == BLIND_REVIEW_BEFORE_DEFENSE
+                || this == THESIS_DEFENSE) {
+            return Phase.BEFORE_DEFENSE;
+        }
+        return Phase.AFTER_DEFENSE;
     }
 
     public static CollabStage fromCode(String code) {

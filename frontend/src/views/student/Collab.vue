@@ -3,6 +3,15 @@
     <div class="collab-toolbar" v-if="approvedApplication">
       <span class="collab-toolbar-text">当前已绑定选题，如确需调整，可发起变更申请：</span>
       <el-button-group>
+        <el-button size="small" type="primary" :disabled="!canOpenGlobalFeedback" @click="openFeedbackFromToolbar">评价导师</el-button>
+        <el-button
+          size="small"
+          type="success"
+          :disabled="!canSubmitCompletion"
+          @click="submitCompletion"
+        >
+          {{ approvedApplication?.status === 'COMPLETION_PENDING' ? '结题审核中' : '申请结题' }}
+        </el-button>
         <el-button size="small" @click="openChangeDialog('CHANGE_TOPIC')">申请更换选题</el-button>
         <el-button size="small" type="warning" @click="openChangeDialog('CHANGE_TEACHER')">申请更换导师</el-button>
       </el-button-group>
@@ -72,6 +81,7 @@
                     <el-dropdown-menu>
                       <el-dropdown-item
                         :disabled="
+                          isCompletionPending ||
                           row.accessState !== 'OPEN' ||
                           row.submissionStatus === 'UNDER_REVIEW' ||
                           row.submissionStatus === 'BLOCKED_BY_PREVIOUS'
@@ -86,8 +96,8 @@
                       >
                         打开文件
                       </el-dropdown-item>
-                      <el-dropdown-item :disabled="!row.latestThesisId" @click="row.latestThesisId && openFeedback(row.latestThesisId)">
-                        评价
+                      <el-dropdown-item :disabled="!canRateTeacher(row)" @click="openFeedback(row)">
+                        评价导师
                       </el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
@@ -184,12 +194,12 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import AppDialog from '@/components/AppDialog.vue'
 import CollabPanel from '@/components/CollabPanel.vue'
-import { getMyApplications, type Application } from '@/api/application'
+import { getMyApplications, submitCompletionRequest, type Application } from '@/api/application'
 import { uploadThesisFile, getThesis } from '@/api/thesis'
 import { getNotifications, sendChatMessage, type Notification } from '@/api/notification'
 import { saveStudentThesisFeedback, getThesisEvaluation } from '@/api/evaluation'
@@ -217,6 +227,7 @@ const feedbackForm = ref({
   comment: ''
 })
 const savingFeedback = ref(false)
+const FEEDBACK_STAGE = 'THESIS_DEFENSE'
 
 const changeDialogVisible = ref(false)
 const submittingChange = ref(false)
@@ -235,7 +246,20 @@ const changeDialogTitle = computed(() =>
 const approvedApplication = computed(() => {
   const manual = applications.value.find((a) => a.id === currentApplicationId.value)
   if (manual) return manual
-  return applications.value.find((a) => a.status === 'APPROVED') || null
+  return applications.value.find((a) => a.status === 'APPROVED')
+    || applications.value.find((a) => a.status === 'COMPLETION_PENDING')
+    || applications.value.find((a) => a.status === 'COMPLETION_REJECTED')
+    || null
+})
+const isCompletionPending = computed(() => approvedApplication.value?.status === 'COMPLETION_PENDING')
+const canOpenGlobalFeedback = computed(() => {
+  const defenseRow = progressRows.value.find((r) => r.stage === FEEDBACK_STAGE)
+  return !!defenseRow?.latestThesisId && canRateTeacher(defenseRow)
+})
+const canSubmitCompletion = computed(() => {
+  if (!approvedApplication.value) return false
+  if (approvedApplication.value.status === 'COMPLETION_PENDING') return false
+  return canRateAfterCompletion.value
 })
 
 function accessLabel(state: string) {
@@ -263,6 +287,15 @@ function submitClass(sub: string) {
 function stageLabel(stage: string) {
   const row = progressRows.value.find((r) => r.stage === stage)
   return row?.stageLabel || stage
+}
+
+const canRateAfterCompletion = computed(() => {
+  if (!progressRows.value.length) return false
+  return progressRows.value.every((r) => r.submissionStatus === 'APPROVED')
+})
+
+function canRateTeacher(row: StageProgressItem) {
+  return !!row.latestThesisId && row.stage === FEEDBACK_STAGE && canRateAfterCompletion.value
 }
 
 type TreeRow =
@@ -318,6 +351,7 @@ async function openProgressFile(row: StageProgressItem) {
     const res = await getThesis(row.latestThesisId)
     const url = res.data?.fileUrl
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    else if (res.data?.downloadExpired) ElMessage.warning('该文件下载已过期')
     else ElMessage.warning('未找到文件地址')
   } catch {
     ElMessage.error('无法打开文件')
@@ -363,6 +397,7 @@ const loadProgress = async () => {
   }
 }
 
+
 const loadMessages = async () => {
   if (!approvedApplication.value || !selectedChatStage.value) {
     messages.value = []
@@ -406,7 +441,7 @@ const beforeUpload = (file: File) => {
 }
 
 const doUpload = async (opts: { file?: File }) => {
-  if (!approvedApplication.value || !uploadTargetStage.value) return
+  if (!approvedApplication.value || !uploadTargetStage.value || isCompletionPending.value) return
   const file = opts?.file
   if (!file) return
   uploading.value = true
@@ -422,14 +457,27 @@ const doUpload = async (opts: { file?: File }) => {
   }
 }
 
-const openFeedback = async (id: number) => {
-  feedbackThesisId.value = id
+const openFeedback = async (row: StageProgressItem) => {
+  if (isCompletionPending.value) {
+    ElMessage.warning('结题审核中，暂不可修改评价')
+    return
+  }
+  if (!row.latestThesisId) return
+  if (row.stage !== FEEDBACK_STAGE) {
+    ElMessage.warning('请在「论文答辩」环节进行导师评价')
+    return
+  }
+  if (!canRateAfterCompletion.value) {
+    ElMessage.warning('需在选题全部环节完成并通过后，才能评价导师')
+    return
+  }
+  feedbackThesisId.value = row.latestThesisId
   feedbackForm.value = {
     score: undefined,
     comment: ''
   }
   try {
-    const res = await getThesisEvaluation(id)
+    const res = await getThesisEvaluation(row.latestThesisId)
     if (res.data && res.data.studentScore != null) {
       feedbackForm.value.score = res.data.studentScore
       feedbackForm.value.comment = res.data.studentComment || ''
@@ -441,6 +489,7 @@ const openFeedback = async (id: number) => {
 }
 
 const submitFeedback = async () => {
+  if (isCompletionPending.value) return
   if (!feedbackThesisId.value) return
   if (feedbackForm.value.score == null) {
     ElMessage.warning('请至少给出一个评分')
@@ -459,6 +508,38 @@ const submitFeedback = async () => {
     ElMessage.error('提交失败')
   } finally {
     savingFeedback.value = false
+  }
+}
+
+const openFeedbackFromToolbar = () => {
+  const defenseRow = progressRows.value.find((r) => r.stage === FEEDBACK_STAGE && r.latestThesisId)
+  if (!defenseRow) {
+    ElMessage.warning('请先在论文答辩环节上传材料')
+    return
+  }
+  openFeedback(defenseRow)
+}
+
+const submitCompletion = async () => {
+  if (!approvedApplication.value) return
+  if (!canSubmitCompletion.value) {
+    ElMessage.warning('请先完成全流程审核通过，并完成导师评价后再申请结题')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('确认提交结题申请？提交后将进入导师审核。', '结题申请', {
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  try {
+    await submitCompletionRequest(approvedApplication.value.id)
+    ElMessage.success('结题申请已提交，请等待导师审核')
+    await loadApplications()
+    await loadProgress()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '结题申请提交失败')
   }
 }
 
@@ -610,4 +691,5 @@ onMounted(async () => {
 .sub-muted {
   color: #909399;
 }
+
 </style>

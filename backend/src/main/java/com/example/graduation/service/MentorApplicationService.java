@@ -3,6 +3,7 @@ package com.example.graduation.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.graduation.dto.MentorApplicationResponse;
 import com.example.graduation.dto.TeacherOverviewResponse;
+import com.example.graduation.dto.TopicResponse;
 import com.example.graduation.entity.MentorApplication;
 import com.example.graduation.entity.Topic;
 import com.example.graduation.entity.TopicApplication;
@@ -51,6 +52,9 @@ public class MentorApplicationService {
     private TopicMetricsMapper topicMetricsMapper;
 
     @Autowired
+    private ApplicationService applicationService;
+
+    @Autowired
     private TagService tagService;
 
     @Autowired(required = false)
@@ -61,6 +65,16 @@ public class MentorApplicationService {
      */
     @Transactional
     public MentorApplication createMentorApplication(Long studentId, Long teacherId, String reason) {
+        // 硬约束：已结课（已完成毕设流程）的学生，不允许再次选导师/发起拜师
+        Long completedCount = topicApplicationMapper.selectCount(
+                new LambdaQueryWrapper<TopicApplication>()
+                        .eq(TopicApplication::getStudentId, studentId)
+                        .eq(TopicApplication::getStatus, TopicApplication.ApplicationStatus.COMPLETED)
+        );
+        if (completedCount != null && completedCount > 0) {
+            throw new RuntimeException("您已结课，无法再次申请导师或选题");
+        }
+
         // 简单防重：同一学生对同一导师存在进行中的申请则不允许重复提交
         Long count = mentorApplicationMapper.selectCount(
                 new LambdaQueryWrapper<MentorApplication>()
@@ -104,6 +118,17 @@ public class MentorApplicationService {
                 new LambdaQueryWrapper<MentorApplication>()
                         .eq(MentorApplication::getTeacherId, teacherId)
                         .eq(MentorApplication::getStatus, MentorApplication.Status.PENDING)
+                        .orderByDesc(MentorApplication::getCreatedAt)
+        );
+    }
+
+    /**
+     * 导师查看名下全部拜师申请（含待处理/已同意/已拒绝）
+     */
+    public List<MentorApplication> getTeacherApplications(Long teacherId) {
+        return mentorApplicationMapper.selectList(
+                new LambdaQueryWrapper<MentorApplication>()
+                        .eq(MentorApplication::getTeacherId, teacherId)
                         .orderByDesc(MentorApplication::getCreatedAt)
         );
     }
@@ -168,7 +193,11 @@ public class MentorApplicationService {
         Long approvedCount = topicApplicationMapper.selectCount(
                 new LambdaQueryWrapper<TopicApplication>()
                         .eq(TopicApplication::getStudentId, app.getStudentId())
-                        .eq(TopicApplication::getStatus, TopicApplication.ApplicationStatus.APPROVED)
+                        .in(TopicApplication::getStatus,
+                                TopicApplication.ApplicationStatus.APPROVED,
+                                TopicApplication.ApplicationStatus.COMPLETION_PENDING,
+                                TopicApplication.ApplicationStatus.COMPLETION_REJECTED,
+                                TopicApplication.ApplicationStatus.COMPLETED)
         );
         if (approvedCount != null && approvedCount > 0) {
             throw new RuntimeException("该学生已有已通过的选题申请，请先通过变更流程处理");
@@ -179,6 +208,8 @@ public class MentorApplicationService {
         application.setStudentId(app.getStudentId());
         application.setStatus(TopicApplication.ApplicationStatus.APPROVED);
         application.setRemark(app.getReason());
+        // 入口B复用入口A的“学生-题目”匹配算法，统一口径落库
+        application.setMatchScore(applicationService.calculateMatchScore(topic, app.getStudentId()));
         application.setCreatedAt(LocalDateTime.now());
         application.setUpdatedAt(LocalDateTime.now());
         topicApplicationMapper.insert(application);
@@ -190,6 +221,41 @@ public class MentorApplicationService {
         topicMapper.updateById(topic);
 
         return application;
+    }
+
+    /**
+     * 为导师返回某条拜师申请可指派题目（仅本人、仅已通过申请、仅开放题目），并计算该学生匹配度。
+     */
+    public List<TopicResponse> getAssignableTopicsWithMatch(Long applicationId, Long teacherId) {
+        MentorApplication app = mentorApplicationMapper.selectById(applicationId);
+        if (app == null) {
+            throw new RuntimeException("拜师申请不存在");
+        }
+        if (!teacherId.equals(app.getTeacherId())) {
+            throw new RuntimeException("无权查看该申请的可指派题目");
+        }
+        if (app.getStatus() != MentorApplication.Status.APPROVED) {
+            throw new RuntimeException("仅已通过的拜师申请可指派题目");
+        }
+        List<Topic> topics = topicMapper.selectList(
+                new LambdaQueryWrapper<Topic>()
+                        .eq(Topic::getTeacherId, teacherId)
+                        .eq(Topic::getStatus, Topic.TopicStatus.OPEN)
+                        .orderByDesc(Topic::getCreatedAt)
+        );
+        return topics.stream().map(topic -> {
+            TopicResponse resp = new TopicResponse();
+            resp.setId(topic.getId());
+            resp.setTitle(topic.getTitle());
+            resp.setStatus(topic.getStatus() != null ? topic.getStatus().name() : null);
+            resp.setMatchScore(applicationService.calculateMatchScore(topic, app.getStudentId()));
+            return resp;
+        }).sorted((a, b) -> {
+            if (a.getMatchScore() == null && b.getMatchScore() == null) return 0;
+            if (a.getMatchScore() == null) return 1;
+            if (b.getMatchScore() == null) return -1;
+            return b.getMatchScore().compareTo(a.getMatchScore());
+        }).toList();
     }
 
     /**

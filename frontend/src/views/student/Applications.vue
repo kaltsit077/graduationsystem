@@ -16,6 +16,9 @@
                 <el-tag v-if="row.status === 'PENDING'" type="warning">待审核</el-tag>
                 <el-tag v-else-if="row.status === 'APPROVED'" type="success">已通过</el-tag>
                 <el-tag v-else-if="row.status === 'REJECTED'" type="danger">已拒绝</el-tag>
+                <el-tag v-else-if="row.status === 'COMPLETION_PENDING'" type="warning">结题待审核</el-tag>
+                <el-tag v-else-if="row.status === 'COMPLETION_REJECTED'" type="danger">结题未通过</el-tag>
+                <el-tag v-else-if="row.status === 'COMPLETED'" type="info">已结题</el-tag>
                 <el-tag v-else type="info">{{ row.status || '-' }}</el-tag>
               </template>
             </el-table-column>

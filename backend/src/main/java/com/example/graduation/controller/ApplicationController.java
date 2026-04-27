@@ -7,6 +7,7 @@ import com.example.graduation.dto.ApplicationResponse;
 import com.example.graduation.entity.Topic;
 import com.example.graduation.entity.TopicApplication;
 import com.example.graduation.entity.User;
+import com.example.graduation.mapper.TopicApplicationMapper;
 import com.example.graduation.mapper.TopicMapper;
 import com.example.graduation.mapper.UserMapper;
 import com.example.graduation.service.ApplicationService;
@@ -30,6 +31,9 @@ public class ApplicationController {
     
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private TopicApplicationMapper topicApplicationMapper;
     
     /**
      * 获取当前用户ID
@@ -92,6 +96,18 @@ public class ApplicationController {
         
         return ApiResponse.success(responses);
     }
+
+    /**
+     * 获取单条申请详情（用于补充展示学生/选题信息）
+     */
+    @GetMapping("/{id}")
+    public ApiResponse<ApplicationResponse> getApplicationById(@PathVariable Long id) {
+        TopicApplication application = topicApplicationMapper.selectById(id);
+        if (application == null) {
+            return ApiResponse.error("申请不存在");
+        }
+        return ApiResponse.success(convertToResponse(application));
+    }
     
     /**
      * 导师处理申请
@@ -111,6 +127,35 @@ public class ApplicationController {
         }
         
         applicationService.processApplication(id, teacherId, status, requestDto.getFeedback());
+        return ApiResponse.success(null);
+    }
+
+    /**
+     * 学生发起结题申请
+     */
+    @PostMapping("/{id}/completion-request")
+    public ApiResponse<Void> submitCompletionRequest(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        Long studentId = getCurrentUserId(request);
+        applicationService.submitCompletionRequest(id, studentId);
+        return ApiResponse.success(null);
+    }
+
+    /**
+     * 导师审核结题申请（APPROVED/REJECTED）
+     */
+    @PostMapping("/{id}/completion-review")
+    public ApiResponse<Void> reviewCompletionRequest(
+            @PathVariable Long id,
+            @RequestBody ApplicationProcessRequest requestDto,
+            HttpServletRequest request) {
+        Long teacherId = getCurrentUserId(request);
+        String status = requestDto.getStatus() == null ? "" : requestDto.getStatus().trim().toUpperCase();
+        if (!"APPROVED".equals(status) && !"REJECTED".equals(status)) {
+            return ApiResponse.error("无效的审核结果");
+        }
+        applicationService.reviewCompletionRequest(id, teacherId, "APPROVED".equals(status), requestDto.getFeedback());
         return ApiResponse.success(null);
     }
     

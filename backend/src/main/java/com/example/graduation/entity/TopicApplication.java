@@ -37,7 +37,10 @@ public class TopicApplication {
     public enum ApplicationStatus {
         PENDING,   // 待审核
         APPROVED,  // 已通过
-        REJECTED   // 已拒绝
+        REJECTED,  // 已拒绝
+        COMPLETION_PENDING, // 结题待审核
+        COMPLETION_REJECTED, // 结题未通过
+        COMPLETED  // 已结题
     }
 }
 

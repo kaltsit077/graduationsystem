@@ -4,6 +4,7 @@ import com.example.graduation.common.ApiResponse;
 import com.example.graduation.dto.MentorApplicationCreateRequest;
 import com.example.graduation.dto.MentorApplicationResponse;
 import com.example.graduation.dto.TeacherOverviewResponse;
+import com.example.graduation.dto.TopicResponse;
 import com.example.graduation.entity.MentorApplication;
 import com.example.graduation.service.MentorApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -84,6 +85,23 @@ public class MentorApplicationController {
     }
 
     /**
+     * 导师查看名下全部拜师申请
+     */
+    @GetMapping("/teacher")
+    public ApiResponse<List<MentorApplicationResponse>> getTeacherApplications(HttpServletRequest request) {
+        String role = getCurrentUserRole(request);
+        if (!"TEACHER".equalsIgnoreCase(role)) {
+            return ApiResponse.error("仅导师可以查看该列表");
+        }
+        Long teacherId = getCurrentUserId(request);
+        List<MentorApplication> list = mentorApplicationService.getTeacherApplications(teacherId);
+        List<MentorApplicationResponse> responses = list.stream()
+                .map(mentorApplicationService::toResponse)
+                .collect(Collectors.toList());
+        return ApiResponse.success(responses);
+    }
+
+    /**
      * 导师审批拜师申请
      */
     @PostMapping("/{id}/decision")
@@ -116,6 +134,22 @@ public class MentorApplicationController {
         Long teacherId = getCurrentUserId(request);
         mentorApplicationService.assignTopicForApplication(id, teacherId, topicId);
         return ApiResponse.success(null);
+    }
+
+    /**
+     * 导师查看某条拜师申请可指派题目（附该学生匹配度）
+     */
+    @GetMapping("/{id}/assignable-topics")
+    public ApiResponse<List<TopicResponse>> getAssignableTopics(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        String role = getCurrentUserRole(request);
+        if (!"TEACHER".equalsIgnoreCase(role)) {
+            return ApiResponse.error("仅导师可以执行该操作");
+        }
+        Long teacherId = getCurrentUserId(request);
+        List<TopicResponse> list = mentorApplicationService.getAssignableTopicsWithMatch(id, teacherId);
+        return ApiResponse.success(list);
     }
 
     /**

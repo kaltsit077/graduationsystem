@@ -11,6 +11,9 @@ export interface Thesis {
   fileSize: number
   stage?: string
   status: string
+  downloadable?: boolean
+  downloadExpireAt?: string | null
+  downloadExpired?: boolean
   createdAt?: string
   updatedAt?: string
 }

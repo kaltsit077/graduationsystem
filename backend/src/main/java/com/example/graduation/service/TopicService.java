@@ -107,6 +107,44 @@ public class TopicService {
         topicTagMapper.delete(new LambdaQueryWrapper<TopicTag>().eq(TopicTag::getTopicId, topicId));
         topicMapper.deleteById(topicId);
     }
+
+    /**
+     * 下架选题（导师端）：OPEN -> CLOSED
+     */
+    @Transactional
+    public void closeTopic(Long topicId, Long currentTeacherId) {
+        Topic existing = topicMapper.selectById(topicId);
+        if (existing == null) {
+            throw new RuntimeException("选题不存在");
+        }
+        if (currentTeacherId != null && !currentTeacherId.equals(existing.getTeacherId())) {
+            throw new RuntimeException("无权操作他人的选题");
+        }
+        if (existing.getStatus() != Topic.TopicStatus.OPEN) {
+            throw new RuntimeException("仅已开放的选题可下架");
+        }
+        existing.setStatus(Topic.TopicStatus.CLOSED);
+        topicMapper.updateById(existing);
+    }
+
+    /**
+     * 重新开放选题（导师端）：CLOSED -> OPEN
+     */
+    @Transactional
+    public void reopenTopic(Long topicId, Long currentTeacherId) {
+        Topic existing = topicMapper.selectById(topicId);
+        if (existing == null) {
+            throw new RuntimeException("选题不存在");
+        }
+        if (currentTeacherId != null && !currentTeacherId.equals(existing.getTeacherId())) {
+            throw new RuntimeException("无权操作他人的选题");
+        }
+        if (existing.getStatus() != Topic.TopicStatus.CLOSED) {
+            throw new RuntimeException("仅已关闭的选题可重新开放");
+        }
+        existing.setStatus(Topic.TopicStatus.OPEN);
+        topicMapper.updateById(existing);
+    }
     
     /**
      * 保存选题标签

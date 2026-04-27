@@ -3,15 +3,22 @@ package com.example.graduation.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.graduation.entity.Topic;
 import com.example.graduation.entity.TopicApplication;
+import com.example.graduation.entity.Thesis;
+import com.example.graduation.entity.ThesisEvaluation;
+import com.example.graduation.entity.CollabStage;
 import com.example.graduation.mapper.TopicApplicationMapper;
 import com.example.graduation.mapper.TopicMapper;
+import com.example.graduation.mapper.ThesisMapper;
+import com.example.graduation.mapper.ThesisEvaluationMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ApplicationService {
@@ -30,6 +37,12 @@ public class ApplicationService {
 
     @Autowired
     private MatchService matchService;
+
+    @Autowired
+    private ThesisMapper thesisMapper;
+
+    @Autowired
+    private ThesisEvaluationMapper thesisEvaluationMapper;
     
     /**
      * 学生提交选题申请
@@ -70,7 +83,11 @@ public class ApplicationService {
         TopicApplication approved = applicationMapper.selectOne(
                 new LambdaQueryWrapper<TopicApplication>()
                         .eq(TopicApplication::getStudentId, studentId)
-                        .eq(TopicApplication::getStatus, TopicApplication.ApplicationStatus.APPROVED)
+                        .in(TopicApplication::getStatus,
+                                TopicApplication.ApplicationStatus.APPROVED,
+                                TopicApplication.ApplicationStatus.COMPLETION_PENDING,
+                                TopicApplication.ApplicationStatus.COMPLETION_REJECTED,
+                                TopicApplication.ApplicationStatus.COMPLETED)
         );
         
         if (approved != null) {
@@ -131,7 +148,11 @@ public class ApplicationService {
             TopicApplication alreadyApproved = applicationMapper.selectOne(
                     new LambdaQueryWrapper<TopicApplication>()
                             .eq(TopicApplication::getTopicId, application.getTopicId())
-                            .eq(TopicApplication::getStatus, TopicApplication.ApplicationStatus.APPROVED)
+                            .in(TopicApplication::getStatus,
+                                    TopicApplication.ApplicationStatus.APPROVED,
+                                    TopicApplication.ApplicationStatus.COMPLETION_PENDING,
+                                    TopicApplication.ApplicationStatus.COMPLETION_REJECTED,
+                                    TopicApplication.ApplicationStatus.COMPLETED)
                             .last("LIMIT 1")
             );
             if (alreadyApproved != null) {
@@ -212,6 +233,104 @@ public class ApplicationService {
      */
     public BigDecimal calculateMatchScore(Topic topic, Long studentId) {
         return matchService.calculateMatchScore(topic, studentId);
+    }
+
+    /**
+     * 学生发起结题申请（仅已通过绑定可发起）。
+     */
+    @Transactional
+    public void submitCompletionRequest(Long applicationId, Long studentId) {
+        TopicApplication app = applicationMapper.selectById(applicationId);
+        if (app == null) {
+            throw new RuntimeException("申请不存在");
+        }
+        if (!studentId.equals(app.getStudentId())) {
+            throw new RuntimeException("无权操作该申请");
+        }
+        if (app.getStatus() != TopicApplication.ApplicationStatus.APPROVED
+                && app.getStatus() != TopicApplication.ApplicationStatus.COMPLETION_REJECTED) {
+            throw new RuntimeException("当前状态不可发起结题申请");
+        }
+        ensureCompletionReady(app.getTopicId(), app.getStudentId());
+        app.setStatus(TopicApplication.ApplicationStatus.COMPLETION_PENDING);
+        app.setUpdatedAt(LocalDateTime.now());
+        applicationMapper.updateById(app);
+
+        Topic topic = topicMapper.selectById(app.getTopicId());
+        if (topic != null && topic.getTeacherId() != null) {
+            notificationService.createNotification(
+                    topic.getTeacherId(),
+                    "COMPLETION_REQUEST",
+                    "学生发起结题申请",
+                    "学生已完成流程并提交结题申请，请审核。",
+                    app.getId()
+            );
+        }
+    }
+
+    /**
+     * 导师审批结题申请。
+     */
+    @Transactional
+    public void reviewCompletionRequest(Long applicationId, Long teacherId, boolean approve, String feedback) {
+        TopicApplication app = applicationMapper.selectById(applicationId);
+        if (app == null) {
+            throw new RuntimeException("申请不存在");
+        }
+        Topic topic = topicMapper.selectById(app.getTopicId());
+        if (topic == null || !teacherId.equals(topic.getTeacherId())) {
+            throw new RuntimeException("无权处理该结题申请");
+        }
+        if (app.getStatus() != TopicApplication.ApplicationStatus.COMPLETION_PENDING) {
+            throw new RuntimeException("当前不在结题待审核状态");
+        }
+        app.setStatus(approve
+                ? TopicApplication.ApplicationStatus.COMPLETED
+                : TopicApplication.ApplicationStatus.COMPLETION_REJECTED);
+        app.setTeacherFeedback(feedback);
+        app.setUpdatedAt(LocalDateTime.now());
+        applicationMapper.updateById(app);
+
+        notificationService.createNotification(
+                app.getStudentId(),
+                "COMPLETION_RESULT",
+                approve ? "结题申请已通过" : "结题申请未通过",
+                approve ? "导师已通过你的结题申请。" : "导师未通过你的结题申请：" + (feedback == null ? "" : feedback),
+                app.getId()
+        );
+    }
+
+    private void ensureCompletionReady(Long topicId, Long studentId) {
+        List<Thesis> all = thesisMapper.selectList(
+                new LambdaQueryWrapper<Thesis>()
+                        .eq(Thesis::getTopicId, topicId)
+                        .eq(Thesis::getStudentId, studentId)
+                        .orderByDesc(Thesis::getCreatedAt)
+        );
+        Map<String, Thesis> latestByStage = new HashMap<>();
+        for (Thesis t : all) {
+            if (t.getStage() == null || t.getStage().isBlank()) continue;
+            latestByStage.putIfAbsent(t.getStage(), t);
+        }
+        for (CollabStage stage : CollabStage.ordered()) {
+            Thesis latest = latestByStage.get(stage.name());
+            if (latest == null || latest.getStatus() != Thesis.ThesisStatus.REVIEWED) {
+                throw new RuntimeException("仍有环节未完成通过，暂不可申请结题");
+            }
+        }
+
+        Thesis defense = latestByStage.get(CollabStage.THESIS_DEFENSE.name());
+        if (defense == null) {
+            throw new RuntimeException("缺少论文答辩环节记录，无法申请结题");
+        }
+        ThesisEvaluation eval = thesisEvaluationMapper.selectOne(
+                new LambdaQueryWrapper<ThesisEvaluation>()
+                        .eq(ThesisEvaluation::getThesisId, defense.getId())
+                        .last("LIMIT 1")
+        );
+        if (eval == null || eval.getScore() == null || eval.getStudentScore() == null) {
+            throw new RuntimeException("请先完成导师总评与学生评价后再申请结题");
+        }
     }
 }
 

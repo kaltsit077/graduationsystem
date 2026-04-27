@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -42,6 +43,8 @@ public class ThesisController {
 
     @Value("${app.upload-dir:./uploads}")
     private String uploadDir;
+    @Value("${app.thesis-download-retention-days:30}")
+    private Integer thesisDownloadRetentionDays;
 
     private static final long MAX_BYTES = 30L * 1024 * 1024; // 30MB
     private static final Set<String> ALLOWED_EXT = Set.of("pdf", "doc", "docx", "ppt", "pptx", "zip", "rar", "7z");
@@ -231,6 +234,16 @@ public class ThesisController {
         response.setFileSize(thesis.getFileSize());
         response.setStage(thesis.getStage());
         response.setStatus(thesis.getStatus() != null ? thesis.getStatus().name() : null);
+        LocalDateTime expireAt = resolveDownloadExpireAt(thesis);
+        boolean expired = expireAt != null && LocalDateTime.now().isAfter(expireAt);
+        response.setDownloadable(!expired);
+        response.setDownloadExpireAt(expireAt);
+        response.setDownloadExpired(expired);
+        if (expired) {
+            purgeExpiredLocalFile(thesis);
+            // 超过下载有效期后，不再向前端暴露真实文件地址
+            response.setFileUrl(null);
+        }
         response.setCreatedAt(thesis.getCreatedAt());
         response.setUpdatedAt(thesis.getUpdatedAt());
         
@@ -251,6 +264,36 @@ public class ThesisController {
         }
         
         return response;
+    }
+
+    private LocalDateTime resolveDownloadExpireAt(Thesis thesis) {
+        if (thesis == null || thesis.getCreatedAt() == null) {
+            return null;
+        }
+        int days = (thesisDownloadRetentionDays == null || thesisDownloadRetentionDays <= 0)
+                ? 30
+                : thesisDownloadRetentionDays;
+        return thesis.getCreatedAt().plusDays(days);
+    }
+
+    private void purgeExpiredLocalFile(Thesis thesis) {
+        if (thesis == null || thesis.getFileUrl() == null) {
+            return;
+        }
+        String fileUrl = thesis.getFileUrl().trim();
+        if (!fileUrl.startsWith("/uploads/")) {
+            return;
+        }
+        try {
+            Path root = Paths.get(uploadDir).toAbsolutePath().normalize();
+            String relative = fileUrl.substring("/uploads/".length());
+            Path target = root.resolve(relative).normalize();
+            if (target.startsWith(root) && Files.exists(target)) {
+                Files.deleteIfExists(target);
+            }
+        } catch (Exception ignored) {
+            // 清理失败不影响主流程
+        }
     }
 }
 

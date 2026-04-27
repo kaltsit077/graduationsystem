@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.graduation.common.ApiResponse;
 import com.example.graduation.dto.AiGenerateTopicsRequest;
 import com.example.graduation.dto.AiGeneratedTopicResponse;
+import com.example.graduation.dto.AiGenerateTopicsResultResponse;
 import com.example.graduation.dto.TopicDuplicateCheckRequest;
 import com.example.graduation.dto.TopicDuplicateCheckResponse;
 import com.example.graduation.dto.TopicRequest;
@@ -212,12 +213,32 @@ public class TopicController {
     }
 
     /**
+     * 下架选题（导师端，仅已开放）
+     */
+    @PostMapping("/{id}/close")
+    public ApiResponse<Void> closeTopic(@PathVariable Long id, HttpServletRequest request) {
+        Long teacherId = getCurrentUserId(request);
+        topicService.closeTopic(id, teacherId);
+        return ApiResponse.success(null);
+    }
+
+    /**
+     * 重新开放选题（导师端，仅已关闭）
+     */
+    @PostMapping("/{id}/reopen")
+    public ApiResponse<Void> reopenTopic(@PathVariable Long id, HttpServletRequest request) {
+        Long teacherId = getCurrentUserId(request);
+        topicService.reopenTopic(id, teacherId);
+        return ApiResponse.success(null);
+    }
+
+    /**
      * 导师基于自身标签进行 AI 选题生成。
      * 系统会先根据导师画像生成若干候选题目，然后对每个候选题执行一次
-     * “标签 + 文本相似度”综合去重检测，仅返回通过阈值的候选题给前端。
+     * “标签 + 文本相似度”综合去重检测，返回通过项以及淘汰统计信息给前端。
      */
     @PostMapping("/ai-generate")
-    public ApiResponse<List<AiGeneratedTopicResponse>> generateAiTopics(
+    public ApiResponse<AiGenerateTopicsResultResponse> generateAiTopics(
             @RequestBody(required = false) AiGenerateTopicsRequest requestDto,
             HttpServletRequest request) {
         if (aiTopicService == null) {
@@ -237,7 +258,7 @@ public class TopicController {
         requestDto.setCount(preGenerate);
 
         List<AiTopicService.CandidateTopic> candidates = aiTopicService.generateTopicsForTeacher(teacherId, requestDto);
-        List<AiGeneratedTopicResponse> responses = candidates.stream().map(c -> {
+        List<AiGeneratedTopicResponse> allChecked = candidates.stream().map(c -> {
             TopicService.DuplicateCheckResult check = topicService.checkDuplicate(null, c.getTitle(), c.getDescription());
             AiGeneratedTopicResponse dto = new AiGeneratedTopicResponse();
             dto.setTitle(c.getTitle());
@@ -247,11 +268,25 @@ public class TopicController {
             dto.setSimilarTopicTitle(check.getSimilarTopicTitle());
             dto.setPassed(check.isPassed());
             return dto;
-        }).filter(AiGeneratedTopicResponse::isPassed)
+        }).collect(Collectors.toList());
+
+        List<AiGeneratedTopicResponse> passed = allChecked.stream()
+                .filter(AiGeneratedTopicResponse::isPassed)
+                .collect(Collectors.toList());
+
+        List<AiGeneratedTopicResponse> responses = passed.stream()
                 .limit(desired)
                 .collect(Collectors.toList());
 
-        return ApiResponse.success(responses);
+        AiGenerateTopicsResultResponse result = new AiGenerateTopicsResultResponse();
+        result.setTopics(responses);
+        result.setGeneratedCount(candidates.size());
+        result.setPassedCount(passed.size());
+        result.setEliminatedCount(Math.max(0, candidates.size() - passed.size()));
+        result.setReturnedCount(responses.size());
+        result.setDesiredCount(desired);
+
+        return ApiResponse.success(result);
     }
     
     /**

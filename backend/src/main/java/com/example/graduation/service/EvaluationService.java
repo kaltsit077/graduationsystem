@@ -1,6 +1,7 @@
 package com.example.graduation.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.graduation.entity.CollabStage;
 import com.example.graduation.entity.Thesis;
 import com.example.graduation.entity.ThesisEvaluation;
 import com.example.graduation.entity.Topic;
@@ -35,6 +36,7 @@ public class EvaluationService {
     @Autowired
     private TopicMetricsMapper topicMetricsMapper;
 
+
     /**
      * 教师对某篇论文进行评价（新增或更新）
      */
@@ -49,6 +51,9 @@ public class EvaluationService {
         Thesis thesis = thesisMapper.selectById(thesisId);
         if (thesis == null) {
             throw new RuntimeException("论文不存在");
+        }
+        if (!CollabStage.THESIS_DEFENSE.name().equals(thesis.getStage())) {
+            throw new RuntimeException("仅允许在「论文答辩」环节录入论文总成绩");
         }
 
         ThesisEvaluation existing = thesisEvaluationMapper.selectOne(
@@ -102,6 +107,10 @@ public class EvaluationService {
         if (!thesis.getStudentId().equals(studentId)) {
             throw new RuntimeException("只能评价自己的论文");
         }
+        if (!CollabStage.THESIS_DEFENSE.name().equals(thesis.getStage())) {
+            throw new RuntimeException("仅允许基于「论文答辩」环节提交导师评价");
+        }
+        assertCollabCompleted(thesis.getTopicId(), studentId);
 
         ThesisEvaluation existing = thesisEvaluationMapper.selectOne(
                 new LambdaQueryWrapper<ThesisEvaluation>()
@@ -131,6 +140,30 @@ public class EvaluationService {
             thesisEvaluationMapper.updateById(existing);
         }
     }
+
+    /** 仅当该学生在该选题下所有协作环节都已通过，才允许提交导师评价。 */
+    private void assertCollabCompleted(Long topicId, Long studentId) {
+        List<Thesis> allTheses = thesisMapper.selectList(
+                new LambdaQueryWrapper<Thesis>()
+                        .eq(Thesis::getTopicId, topicId)
+                        .eq(Thesis::getStudentId, studentId)
+                        .orderByDesc(Thesis::getCreatedAt)
+        );
+        Map<String, Thesis> latestByStage = new HashMap<>();
+        for (Thesis t : allTheses) {
+            if (t.getStage() == null || t.getStage().isBlank()) {
+                continue;
+            }
+            latestByStage.putIfAbsent(t.getStage(), t);
+        }
+        for (CollabStage stage : CollabStage.ordered()) {
+            Thesis latest = latestByStage.get(stage.name());
+            if (latest == null || latest.getStatus() != Thesis.ThesisStatus.REVIEWED) {
+                throw new RuntimeException("请在选题全部环节完成并通过后，再进行导师评价");
+            }
+        }
+    }
+
 
     /**
      * 为指定导师重算其所有选题的统计指标

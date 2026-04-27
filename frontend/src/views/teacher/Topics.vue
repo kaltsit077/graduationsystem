@@ -36,8 +36,15 @@
             >
               提交审核
             </el-button>
+            <el-button v-if="row.status === 'OPEN'" type="warning" size="small" @click="closeTopicItem(row)">下架</el-button>
+            <el-button v-if="row.status === 'CLOSED'" type="success" size="small" @click="reopenTopicItem(row)">重新开放</el-button>
             <el-button type="info" size="small" @click="checkDuplicate(row)">去重检测</el-button>
-            <el-button type="danger" size="small" @click="removeTopic(row)">删除</el-button>
+            <el-button
+              v-if="row.status === 'DRAFT' || row.status === 'REJECTED'"
+              type="danger"
+              size="small"
+              @click="removeTopic(row)"
+            >删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -227,7 +234,7 @@
               :closable="false"
               show-icon
               class="ai-right-alert"
-              description="以下列表仅展示已经通过系统自动去重阈值的候选题目。你可以根据需要修改后再导入到选题列表中。"
+              :description="`以下列表仅展示通过系统自动去重阈值的候选题目。共生成 ${aiSummary?.generatedCount ?? 0} 个，通过 ${aiSummary?.passedCount ?? 0} 个，淘汰 ${aiSummary?.eliminatedCount ?? 0} 个，当前返回 ${aiSummary?.returnedCount ?? 0} 个。`"
             />
             <el-scrollbar v-if="aiTopics.length > 0" height="68vh">
               <div class="ai-topic-list">
@@ -286,11 +293,14 @@ import {
   submitTopicForReview,
   checkTopicDuplicate,
   deleteTopic,
+  closeTopic,
+  reopenTopic,
   generateAiTopics,
   type Topic,
-  type AiGeneratedTopic
+  type AiGeneratedTopic,
+  type AiGenerateTopicsResult
 } from '@/api/topic'
-import { getTeacherProfile, type TeacherProfileResponse } from '@/api/teacher'
+import { getTeacherProfile } from '@/api/teacher'
 
 const loading = ref(false)
 const topics = ref<Topic[]>([])
@@ -372,6 +382,7 @@ const aiForm = ref({
   tagNames: [] as string[]
 })
 const aiTopics = ref<AiGeneratedTopic[]>([])
+const aiSummary = ref<AiGenerateTopicsResult | null>(null)
 const teacherTags = ref<string[]>([])
 
 const dialogTitle = computed(() => {
@@ -417,6 +428,7 @@ const showCreateDialog = () => {
 const openAiDialog = () => {
   aiDialogVisible.value = true
   aiTopics.value = []
+  aiSummary.value = null
   // 首次打开时拉取导师标签
   if (teacherTags.value.length === 0) {
     loadTeacherTags()
@@ -505,6 +517,7 @@ const saveTopic = async () => {
 const generateAiTopicsClick = async () => {
   aiLoading.value = true
   aiTopics.value = []
+  aiSummary.value = null
   try {
     const res = await generateAiTopics({
       count: aiForm.value.count,
@@ -516,11 +529,14 @@ const generateAiTopicsClick = async () => {
       dataHint: aiForm.value.dataHint?.trim() || undefined,
       innovationHint: aiForm.value.innovationHint?.trim() || undefined
     })
-    aiTopics.value = res.data || []
+    aiSummary.value = res.data || null
+    aiTopics.value = aiSummary.value?.topics || []
     if (aiTopics.value.length === 0) {
       ElMessage.info('暂未生成合适的候选题目，请补充选题需求说明后重试')
     } else {
-      ElMessage.success(`已生成 ${aiTopics.value.length} 个候选题目`)
+      ElMessage.success(
+        `已返回 ${aiTopics.value.length} 个候选题目，淘汰 ${aiSummary.value?.eliminatedCount ?? 0} 个重复/高相似候选`
+      )
     }
   } catch (error: any) {
     ElMessage.error(error.message || '生成候选选题失败')
@@ -614,6 +630,52 @@ const removeTopic = async (topic: Topic) => {
     loadTopics()
   } catch (error: any) {
     ElMessage.error(error.message || '删除失败')
+  }
+}
+
+const closeTopicItem = async (topic: Topic) => {
+  try {
+    await ElMessageBox.confirm(
+      '下架后学生将无法再看到该选题并发起申请。是否确认下架？',
+      '下架选题',
+      {
+        confirmButtonText: '下架',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return
+  }
+  try {
+    await closeTopic(topic.id)
+    ElMessage.success('选题已下架')
+    loadTopics()
+  } catch (error: any) {
+    ElMessage.error(error.message || '下架失败')
+  }
+}
+
+const reopenTopicItem = async (topic: Topic) => {
+  try {
+    await ElMessageBox.confirm(
+      '重新开放后，学生可再次看到并申请该选题。是否确认重新开放？',
+      '重新开放选题',
+      {
+        confirmButtonText: '重新开放',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
+  } catch {
+    return
+  }
+  try {
+    await reopenTopic(topic.id)
+    ElMessage.success('选题已重新开放')
+    loadTopics()
+  } catch (error: any) {
+    ElMessage.error(error.message || '操作失败')
   }
 }
 </script>
